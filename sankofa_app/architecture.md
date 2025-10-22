@@ -13,18 +13,21 @@ Reference guide for the Flutter-based Digital Susu savings app targeting Ghana a
 
 ## Data Models (lib/models/)
 ✅ **UserModel** - id, name, phone, email, photo, kyc status, wallet balance, timestamps
-✅ **TransactionModel** - id, userId, amount, type, status, description, date, timestamps
+✅ **TransactionModel** - id, userId, amount, type, status, description, channel, fees, counterparty, reference, date, timestamps
 ✅ **SusuGroupModel** - id, name, memberIds, memberNames, contribution, cycles, next payout, timestamps
+✅ **GroupDraftModel** - id, name, purpose, contribution, cadence, start date, staged member names, timestamps
 ✅ **SavingsGoalModel** - id, userId, title, target/current amounts, deadline, category, timestamps
+✅ **SavingsContributionModel** - id, goalId, amount, channel, note, date, timestamps
+✅ **SavingsContributionOutcome** - helper result for boosts containing the updated goal, contribution entry, and unlocked milestones
 ✅ **NotificationModel** - id, userId, title, message, type, read status, date, timestamps
 
 ## Services (lib/services/)
 Local storage services with SharedPreferences and realistic mock data:
 ✅ **UserService** - manages user profile, KYC status, wallet balance
-✅ **TransactionService** - handles transaction history with 6+ sample transactions
-✅ **GroupService** - manages 3 Susu groups with rotating payout cycles
-✅ **SavingsService** - manages 3 personal savings goals with progress tracking
-✅ **NotificationService** - handles 4+ notifications with read/unread status
+✅ **TransactionService** - handles transaction history with rich channel metadata, fee breakdowns, and 6+ sample transactions
+✅ **GroupService** - manages 3 Susu groups with rotating payout cycles and saves in-progress private circle drafts
+✅ **SavingsService** - manages 3 personal savings goals with progress tracking, mirrors boosts into transactions, and surfaces milestone achievements
+✅ **NotificationService** - handles 4+ notifications with read/unread status, milestone badges, mark-all, and an unread count notifier
 
 ## Screens (lib/screens/)
 ✅ **SplashScreen** - animated logo entry with fade transition (3s delay)
@@ -32,12 +35,16 @@ Local storage services with SharedPreferences and realistic mock data:
 ✅ **LoginScreen** - Ghana phone number (+233) with OTP simulation
 ✅ **KYCScreen** - Ghana Card upload interface with progress indicator
 ✅ **MainScreen** - custom bottom navigation with 4 tabs (Home, Groups, Savings, Profile)
-✅ **HomeScreen** - gradient wallet card, 4 quick action buttons, recent transactions list
-✅ **GroupsScreen** - list of 3 Susu groups with progress bars and contribution details
+✅ **HomeScreen** - gradient wallet card, actionable quick actions (deposit launches flow), recent transactions list
+✅ **DepositFlowScreen** - three-step wallet top-up (amount → channel → review) with transaction logging and wallet sync
+✅ **WithdrawalFlowScreen** - four-step cash-out with compliance checklist, destination selection, and status-aware outcomes that mirror transactions and notifications
+✅ **GroupsScreen** - list of Susu groups with search, filters, and quick access to the creation wizard
+✅ **GroupCreationWizardScreen** - multi-step private group setup with draft persistence and member staging
 ✅ **GroupDetailScreen** - detailed group view with member list and contribute button
 ✅ **SavingsScreen** - 3 personal savings goals with progress bars and category icons
-✅ **TransactionsScreen** - filterable transaction history (All, Deposit, Withdrawal, etc.)
-✅ **NotificationsScreen** - dismissible notification cards with swipe-to-delete
+✅ **TransactionsScreen** - multi-select chips for type/status, date range picker, and export snackbar stub
+✅ **TransactionDetailModal** - draggable bottom sheet with gradient summary, channel metadata, and compliance timeline
+✅ **NotificationsScreen** - segmented Today/Earlier inbox with read dots, swipe dismiss, and mark-all control
 ✅ **ProfileScreen** - user profile with settings menu and logout functionality
 
 ## Features Implemented
@@ -47,14 +54,15 @@ Local storage services with SharedPreferences and realistic mock data:
 ✅ Smooth animations and transitions
 ✅ Refresh indicators on list screens
 ✅ Filter functionality for transactions
-✅ Dismissible notifications
+✅ Grouped notifications inbox with mark-all-as-read and badge sync
 ✅ Contribution dialog in group details
 ✅ Ghana-specific UI elements (flag, currency GH₵)
 ✅ KYC verification badge
 ✅ Custom bottom navigation with active state
 ✅ Gradient cards for wallet and groups
 ✅ Progress indicators for savings goals and group cycles
-✅ Transaction status badges
+✅ Transaction status badges, slide-up detail modal, automatic wallet sync for savings boosts, and live deposit flow receipts
+✅ Withdrawal flow prototype with compliance gating, manual review simulation, and wallet + notification syncing
 ✅ Category-based icons and colors
 
 ## Color Palette
@@ -81,8 +89,8 @@ Local storage services with SharedPreferences and realistic mock data:
 - smooth_page_indicator: ^1.0.0
 
 ## Implementation Status
-✅ All 12 screens implemented
-✅ All 5 data models created
+✅ All 13 screens implemented
+✅ All 8 data models created
 ✅ All 5 services with mock data
 ✅ Theme customized for fintech aesthetic
 ✅ Navigation flow complete
