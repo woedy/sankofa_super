@@ -139,10 +139,10 @@
 
 - [x] **[P1] 5.1 SavingsListRefine**
   - [x] Enhance `SavingsScreen` cards with category, progress, and target date metadata.
-  - [ ] Support sorting by progress and deadline with milestone microcopy.
-- [ ] **[P1] 5.2 SavingsDetailFlow**
-  - [ ] Build goal detail page with contribution log and "Boost Savings" form.
-  - [ ] Validate minimum amounts and update progress using mock data instantly.
+  - [x] Support sorting by progress and deadline with milestone microcopy.
+- [x] **[P1] 5.2 SavingsDetailFlow**
+  - [x] Build goal detail page with contribution log and "Boost Savings" form.
+  - [x] Validate minimum amounts and update progress using mock data instantly.
 - [ ] **[P2] 5.3 GoalCreationWizard**
   - [ ] Implement multi-step goal creation form with draft persistence.
   - [ ] Provide review step before final confirmation.
