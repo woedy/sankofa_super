@@ -20,11 +20,13 @@ class _SavingsScreenState extends State<SavingsScreen> {
       option: SavingsSortOption.progress,
       label: 'Progress',
       icon: Icons.speed,
+      description: 'Lowest completion first',
     ),
     _SortOption(
       option: SavingsSortOption.deadline,
       label: 'Deadline',
       icon: Icons.event,
+      description: 'Soonest due first',
     ),
   ];
 
@@ -95,6 +97,20 @@ class _SavingsScreenState extends State<SavingsScreen> {
                                 ),
                             ],
                             onSelected: (index, _) => _onSortSelected(_sortOptions[index].option),
+                          ),
+                          const SizedBox(height: 6),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            child: Text(
+                              _activeSortDescription,
+                              key: ValueKey(_activeSortDescription),
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withValues(alpha: 0.65),
+                                  ),
+                            ),
                           ),
                         ],
                       ),
@@ -279,13 +295,30 @@ class _SavingsScreenState extends State<SavingsScreen> {
     final sorted = List<SavingsGoalModel>.from(source);
     switch (option) {
       case SavingsSortOption.progress:
-        sorted.sort((a, b) => b.progress.compareTo(a.progress));
+        sorted.sort((a, b) {
+          final progressCompare = a.progress.compareTo(b.progress);
+          if (progressCompare != 0) {
+            return progressCompare;
+          }
+          return a.deadline.compareTo(b.deadline);
+        });
         break;
       case SavingsSortOption.deadline:
-        sorted.sort((a, b) => a.deadline.compareTo(b.deadline));
+        sorted.sort((a, b) {
+          final deadlineCompare = a.deadline.compareTo(b.deadline);
+          if (deadlineCompare != 0) {
+            return deadlineCompare;
+          }
+          return a.progress.compareTo(b.progress);
+        });
         break;
     }
     return sorted;
+  }
+
+  String get _activeSortDescription {
+    final option = _sortOptions.firstWhere((item) => item.option == _activeSort);
+    return 'Sorted by ${option.label.toLowerCase()} • ${option.description}';
   }
 
   String _milestoneMicrocopy(SavingsGoalModel goal) {
@@ -379,9 +412,11 @@ class _SortOption {
     required this.option,
     required this.label,
     required this.icon,
+    required this.description,
   });
 
   final SavingsSortOption option;
   final String label;
   final IconData icon;
+  final String description;
 }
