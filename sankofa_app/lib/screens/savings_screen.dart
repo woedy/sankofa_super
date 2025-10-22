@@ -12,9 +12,26 @@ class SavingsScreen extends StatefulWidget {
   State<SavingsScreen> createState() => _SavingsScreenState();
 }
 
+enum SavingsSortOption { progress, deadline }
+
 class _SavingsScreenState extends State<SavingsScreen> {
+  static const List<_SortOption> _sortOptions = [
+    _SortOption(
+      option: SavingsSortOption.progress,
+      label: 'Progress',
+      icon: Icons.speed,
+    ),
+    _SortOption(
+      option: SavingsSortOption.deadline,
+      label: 'Deadline',
+      icon: Icons.event,
+    ),
+  ];
+
   final SavingsService _savingsService = SavingsService();
   List<SavingsGoalModel> _goals = [];
+  List<SavingsGoalModel> _allGoals = [];
+  SavingsSortOption _activeSort = SavingsSortOption.progress;
 
   @override
   void initState() {
@@ -24,7 +41,11 @@ class _SavingsScreenState extends State<SavingsScreen> {
 
   Future<void> _loadGoals() async {
     final goals = await _savingsService.getGoals();
-    setState(() => _goals = goals);
+    if (!mounted) return;
+    setState(() {
+      _allGoals = goals;
+      _goals = _sortedGoals(_activeSort, goals);
+    });
   }
 
   @override
@@ -41,9 +62,39 @@ class _SavingsScreenState extends State<SavingsScreen> {
             ? const Center(child: CircularProgressIndicator())
             : ListView.builder(
                 padding: const EdgeInsets.fromLTRB(12, 20, 12, 20),
-                itemCount: _goals.length,
+                itemCount: _goals.length + 1,
                 itemBuilder: (context, index) {
-                  final goal = _goals[index];
+                  if (index == 0) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SectionHeader(
+                            title: 'Active savings goals',
+                            subtitle:
+                                'Sort by progress or upcoming deadline to spot which goal needs attention first.',
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
+                          const SizedBox(height: 12),
+                          ActionChipRow(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            items: [
+                              for (final option in _sortOptions)
+                                ActionChipItem(
+                                  label: option.label,
+                                  icon: option.icon,
+                                  isSelected: option.option == _activeSort,
+                                ),
+                            ],
+                            onSelected: (index, _) => _onSortSelected(_sortOptions[index].option),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  final goal = _goals[index - 1];
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: _buildGoalCard(goal),
@@ -155,6 +206,14 @@ class _SavingsScreenState extends State<SavingsScreen> {
               secondaryLabel: 'Due ${DateFormat('MMM dd, yyyy').format(goal.deadline)}',
               color: categoryColor,
             ),
+            const SizedBox(height: 12),
+            Text(
+              _milestoneMicrocopy(goal),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                    fontWeight: FontWeight.w500,
+                  ),
+            ),
             const SizedBox(height: 16),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -202,6 +261,77 @@ class _SavingsScreenState extends State<SavingsScreen> {
     );
   }
 
+  void _onSortSelected(SavingsSortOption option) {
+    setState(() {
+      _activeSort = option;
+      _goals = _sortedGoals(option, _allGoals);
+    });
+  }
+
+  List<SavingsGoalModel> _sortedGoals(SavingsSortOption option, List<SavingsGoalModel> source) {
+    final sorted = List<SavingsGoalModel>.from(source);
+    switch (option) {
+      case SavingsSortOption.progress:
+        sorted.sort((a, b) => b.progress.compareTo(a.progress));
+        break;
+      case SavingsSortOption.deadline:
+        sorted.sort((a, b) => a.deadline.compareTo(b.deadline));
+        break;
+    }
+    return sorted;
+  }
+
+  String _milestoneMicrocopy(SavingsGoalModel goal) {
+    final progress = goal.progress.clamp(0.0, 1.0);
+    final now = DateTime.now();
+    final daysRemaining = goal.deadline.difference(now).inDays;
+
+    if (progress >= 1) {
+      return 'Goal achieved! Schedule your payout when you’re ready.';
+    }
+
+    if (daysRemaining < 0) {
+      return 'Deadline passed — extend your plan to keep the savings momentum.';
+    }
+
+    final milestones = [0.25, 0.5, 0.75, 1.0];
+    final nextMilestone = milestones.firstWhere((threshold) => progress < threshold, orElse: () => 1.0);
+    final remainingAmount = (goal.targetAmount * nextMilestone) - goal.currentAmount;
+    final milestoneLabel = (nextMilestone * 100).toStringAsFixed(0);
+    final timeToDeadline = _formatTimeToDeadline(daysRemaining);
+
+    if (remainingAmount <= 1) {
+      return 'You’re on the cusp of $milestoneLabel% — even a small top-up this week gets you there with $timeToDeadline.';
+    }
+
+    final formattedAmount = NumberFormat('#,##0').format(remainingAmount.ceil());
+    return 'Top up GH₵ $formattedAmount to reach $milestoneLabel% with $timeToDeadline.';
+  }
+
+  String _formatTimeToDeadline(int daysRemaining) {
+    if (daysRemaining <= 0) {
+      return 'no time to spare';
+    }
+    if (daysRemaining == 1) {
+      return '1 day left';
+    }
+    if (daysRemaining < 7) {
+      return '$daysRemaining days left';
+    }
+    final weeks = (daysRemaining / 7).floor();
+    if (weeks == 1) {
+      return '1 week remaining';
+    }
+    if (weeks < 5) {
+      return '$weeks weeks remaining';
+    }
+    final months = (daysRemaining / 30).floor();
+    if (months <= 1) {
+      return 'about a month remaining';
+    }
+    return '$months months remaining';
+  }
+
   IconData _getCategoryIcon(String category) {
     switch (category.toLowerCase()) {
       case 'education':
@@ -235,4 +365,16 @@ class _SavingsScreenState extends State<SavingsScreen> {
         return const Color(0xFF6366F1);
     }
   }
+}
+
+class _SortOption {
+  const _SortOption({
+    required this.option,
+    required this.label,
+    required this.icon,
+  });
+
+  final SavingsSortOption option;
+  final String label;
+  final IconData icon;
 }
