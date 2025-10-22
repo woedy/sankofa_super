@@ -16,6 +16,7 @@ Reference guide for the Flutter-based Digital Susu savings app targeting Ghana a
 ✅ **TransactionModel** - id, userId, amount, type, status, description, date, timestamps
 ✅ **SusuGroupModel** - id, name, memberIds, memberNames, contribution, cycles, next payout, timestamps
 ✅ **SavingsGoalModel** - id, userId, title, target/current amounts, deadline, category, timestamps
+✅ **SavingsContributionModel** - id, goalId, amount, channel, note, date, timestamps
 ✅ **NotificationModel** - id, userId, title, message, type, read status, date, timestamps
 
 ## Services (lib/services/)
@@ -23,7 +24,7 @@ Local storage services with SharedPreferences and realistic mock data:
 ✅ **UserService** - manages user profile, KYC status, wallet balance
 ✅ **TransactionService** - handles transaction history with 6+ sample transactions
 ✅ **GroupService** - manages 3 Susu groups with rotating payout cycles
-✅ **SavingsService** - manages 3 personal savings goals with progress tracking
+✅ **SavingsService** - manages 3 personal savings goals with progress tracking plus contribution history and boost recording
 ✅ **NotificationService** - handles 4+ notifications with read/unread status
 
 ## Screens (lib/screens/)
@@ -82,7 +83,7 @@ Local storage services with SharedPreferences and realistic mock data:
 
 ## Implementation Status
 ✅ All 12 screens implemented
-✅ All 5 data models created
+✅ All 6 data models created
 ✅ All 5 services with mock data
 ✅ Theme customized for fintech aesthetic
 ✅ Navigation flow complete
