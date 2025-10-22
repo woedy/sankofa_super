@@ -3,9 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:sankofasave/controllers/theme_controller.dart';
 import 'package:sankofasave/data/process_flows.dart';
+import 'package:sankofasave/models/susu_group_model.dart';
 import 'package:sankofasave/models/transaction_model.dart';
 import 'package:sankofasave/models/user_model.dart';
 import 'package:sankofasave/models/process_flow_model.dart';
+import 'package:sankofasave/screens/group_creation_wizard_screen.dart';
 import 'package:sankofasave/screens/notifications_screen.dart';
 import 'package:sankofasave/screens/process_flow_screen.dart';
 import 'package:sankofasave/screens/transaction_detail_screen.dart';
@@ -317,7 +319,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 label: 'Create Private Group',
                 icon: Icons.lock_person_outlined,
                 color: Theme.of(context).colorScheme.primaryContainer,
-                onTap: () => _openProcess(ProcessFlows.createGroup),
+                onTap: _launchGroupCreation,
               ),
               _QuickActionItem(
                 label: 'Boost Savings',
@@ -717,6 +719,24 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _launchGroupCreation() async {
+    final createdGroup = await Navigator.of(context).push<SusuGroupModel>(
+      RouteTransitions.slideUp(const GroupCreationWizardScreen()),
+    );
+    if (createdGroup == null) return;
+
+    _showSnackBar(
+      '${createdGroup.name} is ready with ${createdGroup.memberNames.length} members.',
+    );
+  }
+
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   void _openProcess(ProcessFlowModel flow) {
     Navigator.of(context).push(
       RouteTransitions.slideUp(ProcessFlowScreen(flow: flow)),
@@ -840,3 +860,4 @@ class _ProcessFlowCard extends StatelessWidget {
         ),
       );
 }
+
