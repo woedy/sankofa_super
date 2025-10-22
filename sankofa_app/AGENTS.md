@@ -139,7 +139,7 @@
 
 - [x] **[P1] 5.1 SavingsListRefine**
   - [x] Enhance `SavingsScreen` cards with category, progress, and target date metadata.
-  - [ ] Support sorting by progress and deadline with milestone microcopy.
+  - [x] Support sorting by progress and deadline with milestone microcopy.
 - [ ] **[P1] 5.2 SavingsDetailFlow**
   - [ ] Build goal detail page with contribution log and "Boost Savings" form.
   - [ ] Validate minimum amounts and update progress using mock data instantly.

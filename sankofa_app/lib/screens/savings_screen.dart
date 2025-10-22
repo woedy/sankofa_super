@@ -32,6 +32,7 @@ class _SavingsScreenState extends State<SavingsScreen> {
   List<SavingsGoalModel> _goals = [];
   List<SavingsGoalModel> _allGoals = [];
   SavingsSortOption _activeSort = SavingsSortOption.progress;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -40,11 +41,17 @@ class _SavingsScreenState extends State<SavingsScreen> {
   }
 
   Future<void> _loadGoals() async {
+    if (_goals.isEmpty) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
     final goals = await _savingsService.getGoals();
     if (!mounted) return;
     setState(() {
       _allGoals = goals;
       _goals = _sortedGoals(_activeSort, goals);
+      _isLoading = false;
     });
   }
 
@@ -58,7 +65,7 @@ class _SavingsScreenState extends State<SavingsScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: _loadGoals,
-        child: _goals.isEmpty
+        child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : ListView.builder(
                 padding: const EdgeInsets.fromLTRB(12, 20, 12, 20),
