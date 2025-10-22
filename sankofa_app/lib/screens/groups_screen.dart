@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sankofasave/models/susu_group_model.dart';
+import 'package:sankofasave/screens/group_creation_wizard_screen.dart';
 import 'package:sankofasave/screens/group_detail_screen.dart';
 import 'package:sankofasave/services/group_service.dart';
 import 'package:sankofasave/utils/user_avatar_resolver.dart';
@@ -43,6 +44,23 @@ class _GroupsScreenState extends State<GroupsScreen> {
   void _openProcess(ProcessFlowModel flow) {
     Navigator.of(context).push(
       RouteTransitions.slideUp(ProcessFlowScreen(flow: flow)),
+    );
+  }
+
+  Future<void> _openCreationWizard() async {
+    final createdGroup = await Navigator.of(context).push<SusuGroupModel>(
+      RouteTransitions.slideUp(const GroupCreationWizardScreen()),
+    );
+    if (createdGroup == null) return;
+
+    await _loadGroups();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${createdGroup.name} is live with ${createdGroup.memberNames.length} members.',
+        ),
+      ),
     );
   }
 
@@ -126,7 +144,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         heroTag: 'groups_fab',
-        onPressed: () => _openProcess(ProcessFlows.createGroup),
+        onPressed: _openCreationWizard,
         backgroundColor: Theme.of(context).colorScheme.primary,
         icon: const Icon(Icons.lock_outline, color: Colors.white),
         label: const Text('Create Private Group', style: TextStyle(color: Colors.white)),
@@ -190,20 +208,20 @@ class _GroupsScreenState extends State<GroupsScreen> {
                   label: const Text('How public groups work'),
                 ),
               ),
-              SizedBox(
-                width: 220,
-                child: OutlinedButton.icon(
-                  onPressed: () => _openProcess(ProcessFlows.createGroup),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: theme.colorScheme.primary,
-                    side: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.4)),
-                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 18),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  SizedBox(
+                    width: 220,
+                    child: OutlinedButton.icon(
+                      onPressed: _openCreationWizard,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: theme.colorScheme.primary,
+                        side: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.4)),
+                        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 18),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      icon: const Icon(Icons.lock_person_outlined),
+                      label: const Text('Create a private circle'),
+                    ),
                   ),
-                  icon: const Icon(Icons.lock_person_outlined),
-                  label: const Text('Create a private circle'),
-                ),
-              ),
             ],
           ),
         ],
@@ -274,7 +292,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            'Try adjusting the search or cycle filters, or learn how to create a private circle tailored to your needs.',
+            'Try adjusting the search or cycle filters, or jump straight into creating a private circle tailored to your needs.',
             style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                   height: 1.5,
@@ -282,7 +300,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
           ),
           const SizedBox(height: 16),
           OutlinedButton.icon(
-            onPressed: () => _openProcess(ProcessFlows.createGroup),
+            onPressed: _openCreationWizard,
             style: OutlinedButton.styleFrom(
               foregroundColor: theme.colorScheme.primary,
               side: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.4)),
@@ -290,7 +308,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
             icon: const Icon(Icons.lightbulb_outline),
-            label: const Text('See how to start a private group'),
+            label: const Text('Start a private group'),
           ),
         ],
       ),
