@@ -22,6 +22,12 @@ class NotificationService {
     await prefs.setStringList(_notificationsKey, notificationsJson);
   }
 
+  Future<void> addNotification(NotificationModel notification) async {
+    final notifications = await getNotifications();
+    notifications.insert(0, notification);
+    await _saveNotifications(notifications);
+  }
+
   Future<void> markAsRead(String id) async {
     final notifications = await getNotifications();
     final index = notifications.indexWhere((n) => n.id == id);

@@ -9,7 +9,10 @@ class TransactionService {
     final prefs = await SharedPreferences.getInstance();
     final transactionsJson = prefs.getStringList(_transactionsKey);
     if (transactionsJson != null && transactionsJson.isNotEmpty) {
-      return transactionsJson.map((json) => TransactionModel.fromJson(jsonDecode(json))).toList();
+      final transactions =
+          transactionsJson.map((json) => TransactionModel.fromJson(jsonDecode(json))).toList();
+      transactions.sort((a, b) => b.date.compareTo(a.date));
+      return transactions;
     }
     final defaultTransactions = _getDefaultTransactions();
     await _saveTransactions(defaultTransactions);
@@ -30,7 +33,7 @@ class TransactionService {
 
   List<TransactionModel> _getDefaultTransactions() {
     final now = DateTime.now();
-    return [
+    final transactions = [
       TransactionModel(
         id: 'txn_001',
         userId: 'user_001',
@@ -97,6 +100,30 @@ class TransactionService {
         createdAt: now.subtract(const Duration(days: 10)),
         updatedAt: now.subtract(const Duration(days: 10)),
       ),
+      TransactionModel(
+        id: 'txn_007',
+        userId: 'user_001',
+        amount: 450.00,
+        type: 'withdrawal',
+        status: 'pending',
+        description: 'Pending withdrawal to bank account',
+        date: now.subtract(const Duration(days: 12)),
+        createdAt: now.subtract(const Duration(days: 12)),
+        updatedAt: now.subtract(const Duration(days: 11, hours: 12)),
+      ),
+      TransactionModel(
+        id: 'txn_008',
+        userId: 'user_001',
+        amount: 120.00,
+        type: 'deposit',
+        status: 'failed',
+        description: 'Failed mobile money top-up',
+        date: now.subtract(const Duration(days: 14)),
+        createdAt: now.subtract(const Duration(days: 14)),
+        updatedAt: now.subtract(const Duration(days: 14)),
+      ),
     ];
+    transactions.sort((a, b) => b.date.compareTo(a.date));
+    return transactions;
   }
 }
