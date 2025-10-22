@@ -56,7 +56,7 @@
 - **Component Library Blueprint**
   - **WalletSummaryCard** (`home_screen.dart`): Displays balance, KYC status pill, optional actions. Props: `balance`, `kycStatus`, `onPrimaryAction`. Responsive: switch to horizontal layout with right-aligned actions when width ≥600.
   - **GradientIconBadge** (Groups/Savings hero icons): Props: `icon`, `gradientColors`, `diameter`. Responsive: scale diameter based on `MediaQuery.size.width` buckets (56→64→72).
-  - **InfoCard** + **InfoRow** (`transaction_detail_screen.dart`, `savings_goal_detail_screen.dart`): Props: `title`, `children`, `labelWidth`. Responsive: allow label width to shrink and fall back to column layout below 360px.
+  - **InfoCard** + **InfoRow** (`transaction_detail_modal.dart`, `savings_goal_detail_screen.dart`): Props: `title`, `children`, `labelWidth`. Responsive: allow label width to shrink and fall back to column layout below 360px.
   - **EntityListTile** (Groups/Savings/Transactions cards): Props: `leading`, `title`, `subtitle`, `meta`, `statusChip`, `onTap`. Responsive: use `Wrap` for meta/status chips and adjust padding from 20→16 on compact devices.
   - **ProgressSummaryBar** (Savings progress, group cycles): Props: `progress`, `label`, `secondaryLabel`, `color`. Responsive: animate width, display labels stacked on narrow viewports.
   - **NotificationCard** standardizing `_getNotificationColor` usage with props: `icon`, `title`, `message`, `timestamp`, `isRead`, `accent`. Responsive: ensure timestamp wraps under message for narrow widths.
@@ -136,24 +136,35 @@
 - [x] **[P1] 4.3 ContributionReceiptUI**
   - [x] Create confirmation screen summarizing contribution details and next steps.
   - [x] Reference transaction IDs from `TransactionService` and include share option.
+- [x] **[P1] 4.4 PrivateGroupCreationWizard**
+  - [x] Replace the process-flow demo with a guided, multi-step creation form (blueprint → rules → invites) surfaced from the Groups FAB and Home quick action.
+  - [x] Persist draft groups to `GroupService`, including staged members, before final confirmation updates the main list.
+- [ ] **[P2] 4.5 GroupInviteTracking**
+  - [ ] Add invite-status chips and reminder actions that reflect each prospective member's KYC and acceptance progress.
+  - [ ] Surface admin-focused insights (pending slots, cycle start blockers) so backend models capture the necessary state.
 
 - [x] **[P1] 5.1 SavingsListRefine**
   - [x] Enhance `SavingsScreen` cards with category, progress, and target date metadata.
-  - [ ] Support sorting by progress and deadline with milestone microcopy.
-- [ ] **[P1] 5.2 SavingsDetailFlow**
-  - [ ] Build goal detail page with contribution log and "Boost Savings" form.
-  - [ ] Validate minimum amounts and update progress using mock data instantly.
+  - [x] Support sorting by progress and deadline with milestone microcopy.
+- [x] **[P1] 5.2 SavingsDetailFlow**
+  - [x] Build goal detail page with contribution log and "Boost Savings" form.
+  - [x] Validate minimum amounts and update progress using mock data instantly.
 - [ ] **[P2] 5.3 GoalCreationWizard**
   - [ ] Implement multi-step goal creation form with draft persistence.
   - [ ] Provide review step before final confirmation.
+- [x] **[P1] 5.4 SavingsContributionSync**
+  - [x] Mirror boost activity into `TransactionService` so wallet history reflects personal goal top-ups.
+  - [x] Generate celebratory receipts/badges for major milestones (25%, 50%, 75%) and expose them to the Notifications inbox.
 
 ### 6. Transactions & Notifications
-- [ ] **[P1] 6.1 TransactionsListFilters**
-  - [ ] Add pill filters, date range picker, and export stub to `TransactionsScreen`.
-  - [ ] Ensure filtering updates list instantly and displays guidance for empty results.
-- [ ] **[P1] 6.2 TransactionDetailModal**
-  - [ ] Build slide-up modal with source, fees, and status metadata.
-  - [ ] Enable access from both `TransactionsScreen` list and home recent transactions.
+- [x] **[P1] 6.1 TransactionsListFilters**
+  - [x] Add pill filters, date range picker, and export stub to `TransactionsScreen`.
+  - [x] Ensure filtering updates list instantly and displays guidance for empty results.
+  - _Audit 2025-10-22_: Transactions history now supports multi-select type/status chips, a date range picker, export snackbar stub, and contextual empty states.
+- [x] **[P1] 6.2 TransactionDetailModal**
+  - [x] Build slide-up modal with source, fees, and status metadata.
+  - [x] Enable access from both `TransactionsScreen` list and home recent transactions.
+  - _Audit 2025-10-22_: Slide-up modal now uses `ModalScaffold` with a draggable sheet, timeline audit trail, and is launched from both the Transactions feed and Home recent list.
 - [ ] **[P1] 6.3 NotificationsInbox**
   - [ ] Group notifications into Today/Earlier sections with read indicators.
   - [ ] Provide bulk mark-all-as-read action and sync badge state.
@@ -184,6 +195,9 @@
 - [ ] **[P2] 9.3 HandoffAppendix**
   - [ ] Maintain changelog entries with date, contributor, and summary.
   - [ ] Ensure implementation notes remain up to date for coordinated delivery.
+- [ ] **[P1] 9.4 DataModelParityAudit**
+  - [ ] Keep `architecture.md` and `AGENTS.md` aligned with newly added models/services (e.g., savings contributions) each sprint.
+  - [ ] Introduce a changelog snippet noting when mock schemas change so backend planning stays in sync.
 
 ### QA Checkpoints
 - **[P0 Navigation Slice]** Confirm splash → auth → main tabs, ensure `MainScreen` preserves state, record issues.
@@ -191,3 +205,14 @@
 - **[P1 Onboarding Slice]** Walk through onboarding copy changes, verify skip, confirm analytics stub.
 - **[P1 Savings & Groups Slice]** Play through group list/detail and savings goal flows, note data inconsistencies.
 - **[P2 Support Slice]** Review profile/help localization prep once content updates land.
+
+### 10. Wallet & Cashflow Journeys
+- [ ] **[P1] 10.1 DepositFlowPrototype**
+  - [ ] Build an interactive deposit flow (amount entry → channel selection → confirmation) that updates wallet balance and logs a transaction locally.
+  - [ ] Include a review step outlining fees and reference IDs to mirror regulatory requirements.
+- [ ] **[P1] 10.2 WithdrawalFlowPrototype**
+  - [ ] Implement a withdrawal request experience with compliance checklist, status feedback, and mock failure scenarios.
+  - [ ] Sync withdrawal outcomes to the Transactions list and trigger notification badges.
+- [ ] **[P2] 10.3 CashflowReceipts**
+  - [ ] Provide shareable receipt modals/PDF stubs for deposits and withdrawals accessible from detail views.
+  - [ ] Allow users to export recent cashflow activity for offline records (CSV or PDF stub).
