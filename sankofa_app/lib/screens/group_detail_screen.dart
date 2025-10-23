@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:sankofasave/models/group_invite_model.dart';
 import 'package:sankofasave/models/susu_group_model.dart';
 import 'package:sankofasave/models/transaction_model.dart';
 import 'package:sankofasave/models/user_model.dart';
@@ -12,6 +13,7 @@ import 'package:sankofasave/utils/route_transitions.dart';
 import 'package:sankofasave/utils/user_avatar_resolver.dart';
 import 'package:sankofasave/widgets/user_avatar.dart';
 import 'package:sankofasave/screens/contribution_receipt_screen.dart';
+import 'package:sankofasave/screens/group_join_wizard_screen.dart';
 
 class GroupDetailScreen extends StatefulWidget {
   final String groupId;
@@ -29,8 +31,11 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   final GlobalKey<FormState> _contributionFormKey = GlobalKey<FormState>();
   late TextEditingController _amountController;
   List<TransactionModel> _contributionHistory = [];
+  final Set<String> _remindingInviteIds = <String>{};
+  final Set<String> _promotingInviteIds = <String>{};
   bool _isSubmittingContribution = false;
   SusuGroupModel? _group;
+  UserModel? _currentUser;
 
   @override
   void initState() {
@@ -46,9 +51,11 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   }
 
   Future<void> _loadGroup() async {
+    final user = await _userService.getCurrentUser();
     final group = await _groupService.getGroupById(widget.groupId);
     if (!mounted) return;
     setState(() {
+      _currentUser = user;
       _group = group;
       if (group != null) {
         _amountController.text = group.contributionAmount.toStringAsFixed(2);
@@ -72,6 +79,115 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     setState(() {
       _contributionHistory = contributions;
     });
+  }
+
+  bool get _isCurrentUserMember {
+    final userId = _currentUser?.id;
+    final group = _group;
+    if (group == null || userId == null) return false;
+    return group.memberIds.contains(userId);
+  }
+
+  int get _availablePublicSeats {
+    final group = _group;
+    if (group == null) return 0;
+    final seats = group.targetMemberCount - group.memberNames.length;
+    return seats < 0 ? 0 : seats;
+  }
+
+  Future<void> _launchJoinWizard() async {
+    final group = _group;
+    if (group == null) return;
+    final updatedGroup = await Navigator.of(context).push<SusuGroupModel>(
+      RouteTransitions.slideUp(
+        GroupJoinWizardScreen(initialGroupId: group.id),
+      ),
+    );
+    if (updatedGroup == null) return;
+
+    if (!mounted) return;
+    setState(() {
+      _group = updatedGroup;
+    });
+    await _loadContributionHistory(updatedGroup);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Welcome to ${updatedGroup.name}!')),
+    );
+  }
+
+  Future<void> _sendInviteReminder(GroupInviteModel invite) async {
+    if (_group == null) return;
+    setState(() {
+      _remindingInviteIds.add(invite.id);
+    });
+
+    try {
+      final updatedGroup =
+          await _groupService.logInviteReminder(_group!.id, invite.id);
+      if (!mounted) return;
+      setState(() {
+        _group = updatedGroup ?? _group;
+        _remindingInviteIds.remove(invite.id);
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Reminder queued for ${invite.name}.'),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _remindingInviteIds.remove(invite.id);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Theme.of(context).colorScheme.error,
+          content: const Text('Failed to send reminder. Please try again.'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _promoteInviteToMember(GroupInviteModel invite) async {
+    if (_group == null) return;
+    setState(() {
+      _promotingInviteIds.add(invite.id);
+    });
+
+    try {
+      final updatedGroup =
+          await _groupService.convertInviteToMember(
+        groupId: _group!.id,
+        inviteId: invite.id,
+      );
+      if (!mounted) return;
+      setState(() {
+        _group = updatedGroup ?? _group;
+        _promotingInviteIds.remove(invite.id);
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${invite.name} has been added to the roster.'),
+        ),
+      );
+      if (_group != null) {
+        await _loadContributionHistory(_group!);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _promotingInviteIds.remove(invite.id);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Theme.of(context).colorScheme.error,
+          content: const Text('Unable to confirm invite. Try again later.'),
+        ),
+      );
+    }
   }
 
   @override
@@ -107,12 +223,23 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (_group!.isPublic) ...[
+                      _buildPublicOverviewCard(context),
+                      const SizedBox(height: 16),
+                      _buildJoinCallout(context),
+                      const SizedBox(height: 20),
+                    ],
                     _buildProgressSection(context),
                     const SizedBox(height: 20),
                     _buildTimelineSection(context),
                     const SizedBox(height: 20),
                     _buildMemberRoster(context),
+                    if (_group!.invites.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      _buildInviteProgress(context),
+                    ],
                     const SizedBox(height: 20),
                     _buildContributionHistory(context),
                   ],
@@ -150,7 +277,14 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
 
   Widget _buildHeroHeader(BuildContext context) {
     final theme = Theme.of(context);
-    final totalPool = _group!.contributionAmount * _group!.memberNames.length;
+    final totalPool = _group!.contributionAmount * _group!.targetMemberCount;
+    final confirmed = _group!.memberNames.length;
+    final accepted = _group!.invites
+        .where((invite) => invite.status == GroupInviteStatus.accepted)
+        .length;
+    final readyCount = confirmed + accepted;
+    final remainingSlots =
+        (_group!.targetMemberCount - readyCount).clamp(0, _group!.targetMemberCount);
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -226,6 +360,166 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 18),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _buildHeroChip(
+                theme,
+                icon: Icons.groups_2,
+                label: '$readyCount/${_group!.targetMemberCount} seats ready',
+              ),
+              if (remainingSlots > 0)
+                _buildHeroChip(
+                  theme,
+                  icon: Icons.timelapse,
+                  label: '$remainingSlots acceptance${remainingSlots == 1 ? '' : 's'} outstanding',
+                ),
+              if (_group!.isPublic)
+                _buildHeroChip(
+                  theme,
+                  icon: Icons.public,
+                  label: 'Public circle',
+                ),
+              if (_group!.requiresApproval)
+                _buildHeroChip(
+                  theme,
+                  icon: Icons.verified_user_outlined,
+                  label: 'Admin reviewed',
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroChip(
+    ThemeData theme, {
+    required IconData icon,
+    required String label,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 16),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPublicOverviewCard(BuildContext context) {
+    final group = _group!;
+    return InfoCard(
+      title: 'Group overview',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (group.description != null) ...[
+            Text(
+              group.description!,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.75), height: 1.5),
+            ),
+            const SizedBox(height: 16),
+          ],
+          InfoRow(
+            label: 'Contribution cadence',
+            value: group.frequency ?? 'Rotational schedule',
+          ),
+          InfoRow(
+            label: 'Seats available',
+            value: '${_availablePublicSeats} of ${group.targetMemberCount}',
+          ),
+          if (group.location != null)
+            InfoRow(
+              label: 'Community location',
+              value: group.location!,
+            ),
+          InfoRow(
+            label: 'Access type',
+            value: group.requiresApproval ? 'Admin approval required' : 'Instant join',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildJoinCallout(BuildContext context) {
+    if (!_group!.isPublic) {
+      return const SizedBox.shrink();
+    }
+    final theme = Theme.of(context);
+    final seats = _availablePublicSeats;
+    final isMember = _isCurrentUserMember;
+    final copy = isMember
+        ? 'You already hold a seat in this circle. Keep contributing consistently to stay in good standing.'
+        : seats > 0
+            ? (_group!.requiresApproval
+                ? 'Submit your request below and the admins will review it before confirming your spot.'
+                : 'Secure your seat now to start contributing in the upcoming cycle.')
+            : 'All seats are filled for now. Check back soon or explore other circles on the Groups tab.';
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.group_add_outlined, color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isMember
+                      ? 'You\'re in!'
+                      : seats > 0
+                          ? '$seats ${seats == 1 ? 'seat' : 'seats'} open for newcomers'
+                          : 'Circle is currently full',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            copy,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+              height: 1.5,
+            ),
+          ),
+          if (!isMember) ...[
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: seats > 0 ? _launchJoinWizard : null,
+              child: Text(seats > 0 ? 'Join this group' : 'Seats unavailable'),
+            ),
+          ],
         ],
       ),
     );
@@ -450,6 +744,85 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     );
   }
 
+  Widget _buildInviteProgress(BuildContext context) {
+    final theme = Theme.of(context);
+    final invites = _group!.invites;
+    final pendingCount = invites
+        .where((invite) => invite.status == GroupInviteStatus.pending)
+        .length;
+    final acceptedCount = invites
+        .where((invite) => invite.status == GroupInviteStatus.accepted)
+        .length;
+    final declinedCount = invites
+        .where((invite) => invite.status == GroupInviteStatus.declined)
+        .length;
+    final kycCleared = invites.where((invite) => invite.kycCompleted).length;
+    final readyCount = _group!.memberNames.length + acceptedCount;
+    final blockers = (_group!.targetMemberCount - readyCount)
+        .clamp(0, _group!.targetMemberCount);
+
+    return InfoCard(
+      title: 'Invite Progress',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _buildInviteSummaryChip(
+                theme,
+                icon: Icons.rule_folder,
+                label: '$kycCleared/${invites.length} KYC cleared',
+                foreground: theme.colorScheme.primary,
+                background: theme.colorScheme.primary.withValues(alpha: 0.12),
+              ),
+              if (pendingCount > 0)
+                _buildInviteSummaryChip(
+                  theme,
+                  icon: Icons.hourglass_bottom,
+                  label:
+                      '$pendingCount awaiting acceptance',
+                  foreground: theme.colorScheme.tertiary,
+                  background:
+                      theme.colorScheme.tertiary.withValues(alpha: 0.12),
+                ),
+              if (declinedCount > 0)
+                _buildInviteSummaryChip(
+                  theme,
+                  icon: Icons.sentiment_dissatisfied,
+                  label:
+                      '$declinedCount declined',
+                  foreground: theme.colorScheme.error,
+                  background: theme.colorScheme.error.withValues(alpha: 0.12),
+                ),
+              _buildInviteSummaryChip(
+                theme,
+                icon: blockers > 0
+                    ? Icons.warning_amber_outlined
+                    : Icons.rocket_launch,
+                label: blockers > 0
+                    ? '$blockers acceptance${blockers == 1 ? '' : 's'} blocking kickoff'
+                    : 'Launch-ready roster',
+                foreground: blockers > 0
+                    ? theme.colorScheme.error
+                    : theme.colorScheme.secondary,
+                background: blockers > 0
+                    ? theme.colorScheme.error.withValues(alpha: 0.12)
+                    : theme.colorScheme.secondary.withValues(alpha: 0.12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          for (var i = 0; i < invites.length; i++) ...[
+            _buildInviteTile(invites[i]),
+            if (i != invites.length - 1) const SizedBox(height: 16),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildMemberRosterRow(
     BuildContext context, {
     required String memberName,
@@ -539,6 +912,257 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInviteSummaryChip(
+    ThemeData theme, {
+    required IconData icon,
+    required String label,
+    required Color foreground,
+    required Color background,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: foreground),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+                  color: foreground,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInviteTile(GroupInviteModel invite) {
+    final theme = Theme.of(context);
+    final asset = UserAvatarResolver.resolve(invite.name);
+    final isPending = invite.status == GroupInviteStatus.pending;
+    final isAccepted = invite.status == GroupInviteStatus.accepted;
+    final isDeclined = invite.status == GroupInviteStatus.declined;
+    final reminderLoading = _remindingInviteIds.contains(invite.id);
+    final promoteLoading = _promotingInviteIds.contains(invite.id);
+
+    Color statusColor;
+    switch (invite.status) {
+      case GroupInviteStatus.accepted:
+        statusColor = theme.colorScheme.secondary;
+        break;
+      case GroupInviteStatus.declined:
+        statusColor = theme.colorScheme.error;
+        break;
+      case GroupInviteStatus.pending:
+      default:
+        statusColor = theme.colorScheme.tertiary;
+    }
+
+    final chips = <Widget>[
+      _buildInviteStatusChip(
+        theme,
+        icon: isDeclined
+            ? Icons.cancel_outlined
+            : isAccepted
+                ? Icons.check_circle
+                : Icons.hourglass_empty,
+        label: invite.status.displayLabel,
+        foreground: statusColor,
+        background: statusColor.withValues(alpha: 0.14),
+      ),
+      _buildInviteStatusChip(
+        theme,
+        icon: invite.kycCompleted
+            ? Icons.verified_outlined
+            : Icons.assignment_late_outlined,
+        label: invite.kycCompleted ? 'KYC verified' : 'KYC pending',
+        foreground: invite.kycCompleted
+            ? theme.colorScheme.primary
+            : theme.colorScheme.primary.withValues(alpha: 0.8),
+        background: invite.kycCompleted
+            ? theme.colorScheme.primary.withValues(alpha: 0.14)
+            : theme.colorScheme.primary.withValues(alpha: 0.08),
+      ),
+      _buildInviteStatusChip(
+        theme,
+        icon: Icons.mark_email_read_outlined,
+        label: 'Sent ${DateFormat('MMM dd').format(invite.sentAt)}',
+        foreground: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+        background: theme.colorScheme.surfaceVariant.withValues(alpha: 0.4),
+      ),
+    ];
+
+    if (invite.lastRemindedAt != null) {
+      chips.add(
+        _buildInviteStatusChip(
+          theme,
+          icon: Icons.campaign_outlined,
+          label:
+              'Reminded ${DateFormat('MMM dd').format(invite.lastRemindedAt!)}',
+          foreground: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+          background:
+              theme.colorScheme.surfaceVariant.withValues(alpha: 0.4),
+        ),
+      );
+    }
+
+    if (invite.respondedAt != null && !isPending) {
+      chips.add(
+        _buildInviteStatusChip(
+          theme,
+          icon: Icons.event_available_outlined,
+          label:
+              'Responded ${DateFormat('MMM dd').format(invite.respondedAt!)}',
+          foreground: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+          background:
+              theme.colorScheme.surfaceVariant.withValues(alpha: 0.4),
+        ),
+      );
+    }
+
+    final actions = <Widget>[];
+    if (!isDeclined) {
+      actions.add(
+        TextButton.icon(
+          onPressed: reminderLoading ? null : () => _sendInviteReminder(invite),
+          icon: reminderLoading
+              ? SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation(
+                      theme.colorScheme.primary,
+                    ),
+                  ),
+                )
+              : const Icon(Icons.sms_outlined),
+          label: Text(reminderLoading ? 'Sending...' : 'Send reminder'),
+        ),
+      );
+    }
+
+    if (isAccepted) {
+      actions.add(
+        OutlinedButton.icon(
+          onPressed:
+              promoteLoading ? null : () => _promoteInviteToMember(invite),
+          icon: promoteLoading
+              ? SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation(
+                      theme.colorScheme.secondary,
+                    ),
+                  ),
+                )
+              : const Icon(Icons.person_add_alt_1),
+          label: Text(promoteLoading ? 'Adding...' : 'Confirm join'),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.06),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              UserAvatar(
+                initials: invite.name.substring(0, 1).toUpperCase(),
+                imagePath: asset,
+                size: 48,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      invite.name,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      invite.phoneNumber,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color:
+                            theme.colorScheme.onSurface.withValues(alpha: 0.65),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: chips,
+          ),
+          if (actions.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: actions,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInviteStatusChip(
+    ThemeData theme, {
+    required IconData icon,
+    required String label,
+    required Color foreground,
+    required Color background,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: foreground),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+                  color: foreground,
+                  fontWeight: FontWeight.w600,
+                ),
           ),
         ],
       ),

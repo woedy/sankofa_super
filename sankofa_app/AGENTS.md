@@ -56,7 +56,7 @@
 - **Component Library Blueprint**
   - **WalletSummaryCard** (`home_screen.dart`): Displays balance, KYC status pill, optional actions. Props: `balance`, `kycStatus`, `onPrimaryAction`. Responsive: switch to horizontal layout with right-aligned actions when width ≥600.
   - **GradientIconBadge** (Groups/Savings hero icons): Props: `icon`, `gradientColors`, `diameter`. Responsive: scale diameter based on `MediaQuery.size.width` buckets (56→64→72).
-  - **InfoCard** + **InfoRow** (`transaction_detail_screen.dart`, `savings_goal_detail_screen.dart`): Props: `title`, `children`, `labelWidth`. Responsive: allow label width to shrink and fall back to column layout below 360px.
+  - **InfoCard** + **InfoRow** (`transaction_detail_modal.dart`, `savings_goal_detail_screen.dart`): Props: `title`, `children`, `labelWidth`. Responsive: allow label width to shrink and fall back to column layout below 360px.
   - **EntityListTile** (Groups/Savings/Transactions cards): Props: `leading`, `title`, `subtitle`, `meta`, `statusChip`, `onTap`. Responsive: use `Wrap` for meta/status chips and adjust padding from 20→16 on compact devices.
   - **ProgressSummaryBar** (Savings progress, group cycles): Props: `progress`, `label`, `secondaryLabel`, `color`. Responsive: animate width, display labels stacked on narrow viewports.
   - **NotificationCard** standardizing `_getNotificationColor` usage with props: `icon`, `title`, `message`, `timestamp`, `isRead`, `accent`. Responsive: ensure timestamp wraps under message for narrow widths.
@@ -128,7 +128,7 @@
   - [x] Implement search-by-name and payout-cycle filters in `GroupsScreen`.
   - [x] Design empty states and contribution status chips.
   - _Audit 2025-10-21_: `groups_screen.dart` now features guided search, cycle filter chips, status pills, and an empty-state CTA linking to process demos for creating private circles.
-- **Public group discovery**: `GroupsScreen` surfaces open/public groups with rich metadata and routes into `ProcessFlowScreen` using `ProcessFlows.joinGroup` for education.
+- **Public group discovery**: `GroupsScreen` surfaces open/public groups with rich metadata, offers a dedicated join wizard, and still links to `ProcessFlowScreen` using `ProcessFlows.joinGroup` for education.
 - **Private group creation**: Quick actions and FAB offer a "Create Private Group" path powered by `ProcessFlows.createGroup`, framing the invite-only setup steps without live backend wiring.
 - [x] **[P1] 4.2 GroupDetailBlueprint**
   - [x] Add timeline, member roster, and contribution history to `GroupDetailScreen`.
@@ -136,54 +136,56 @@
 - [x] **[P1] 4.3 ContributionReceiptUI**
   - [x] Create confirmation screen summarizing contribution details and next steps.
   - [x] Reference transaction IDs from `TransactionService` and include share option.
+- [x] **[P1] 4.4 PrivateGroupCreationWizard**
+  - [x] Replace the process-flow demo with a guided, multi-step creation form (blueprint → rules → invites) surfaced from the Groups FAB and Home quick action.
+  - [x] Persist draft groups to `GroupService`, including staged members, before final confirmation updates the main list.
+- [x] **[P2] 4.5 GroupInviteTracking**
+  - [x] Add invite-status chips and reminder actions that reflect each prospective member's KYC and acceptance progress.
+  - [x] Surface admin-focused insights (pending slots, cycle start blockers) so backend models capture the necessary state.
+  - _Audit 2025-10-22_: Group detail now surfaces invite insight chips, reminder + confirm actions per invite, syncs reminder counts via `GroupService`, and list cards highlight blockers/pending seats.
+- [x] **[P1] 4.6 PublicGroupJoinWizard**
+  - [x] Build a multi-step join experience for curated public circles with auto-contribution and reminder preferences.
+  - [x] Flag public groups in `GroupService`, update list/detail UIs, and trigger notifications when a seat is claimed.
+  - _Audit 2025-10-22_: New `GroupJoinWizardScreen` guides users through selection → plan → review, `SusuGroupModel` tracks public metadata, and joining updates membership, sends a notification, and refreshes list/detail badges.
 
 - [x] **[P1] 5.1 SavingsListRefine**
   - [x] Enhance `SavingsScreen` cards with category, progress, and target date metadata.
-  - [ ] Support sorting by progress and deadline with milestone microcopy.
-- [ ] **[P1] 5.2 SavingsDetailFlow**
-  - [ ] Build goal detail page with contribution log and "Boost Savings" form.
-  - [ ] Validate minimum amounts and update progress using mock data instantly.
-- [ ] **[P2] 5.3 GoalCreationWizard**
-  - [ ] Implement multi-step goal creation form with draft persistence.
-  - [ ] Provide review step before final confirmation.
+  - [x] Support sorting by progress and deadline with milestone microcopy.
+- [x] **[P1] 5.2 SavingsDetailFlow**
+  - [x] Build goal detail page with contribution log and "Boost Savings" form.
+  - [x] Validate minimum amounts and update progress using mock data instantly.
+- [x] **[P2] 5.3 GoalCreationWizard**
+  - [x] Implement multi-step goal creation form with draft persistence.
+  - [x] Provide review step before final confirmation.
+  - _Audit 2025-10-22_: Savings wizard now walks through basics → target → plan → review, saves drafts to SharedPreferences, and creates live goals with celebratory snackbars across Home and Savings.
+- [x] **[P1] 5.4 SavingsContributionSync**
+  - [x] Mirror boost activity into `TransactionService` so wallet history reflects personal goal top-ups.
+  - [x] Generate celebratory receipts/badges for major milestones (25%, 50%, 75%) and expose them to the Notifications inbox.
 
 ### 6. Transactions & Notifications
-- [ ] **[P1] 6.1 TransactionsListFilters**
-  - [ ] Add pill filters, date range picker, and export stub to `TransactionsScreen`.
-  - [ ] Ensure filtering updates list instantly and displays guidance for empty results.
-- [ ] **[P1] 6.2 TransactionDetailModal**
-  - [ ] Build slide-up modal with source, fees, and status metadata.
-  - [ ] Enable access from both `TransactionsScreen` list and home recent transactions.
-- [ ] **[P1] 6.3 NotificationsInbox**
-  - [ ] Group notifications into Today/Earlier sections with read indicators.
-  - [ ] Provide bulk mark-all-as-read action and sync badge state.
+- [x] **[P1] 6.1 TransactionsListFilters**
+  - [x] Add pill filters, date range picker, and export stub to `TransactionsScreen`.
+  - [x] Ensure filtering updates list instantly and displays guidance for empty results.
+  - _Audit 2025-10-22_: Transactions history now supports multi-select type/status chips, a date range picker, export snackbar stub, and contextual empty states.
+- [x] **[P1] 6.2 TransactionDetailModal**
+  - [x] Build slide-up modal with source, fees, and status metadata.
+  - [x] Enable access from both `TransactionsScreen` list and home recent transactions.
+  - _Audit 2025-10-22_: Slide-up modal now uses `ModalScaffold` with a draggable sheet, timeline audit trail, and is launched from both the Transactions feed and Home recent list.
+- [x] **[P1] 6.3 NotificationsInbox**
+  - [x] Group notifications into Today/Earlier sections with read indicators.
+  - [x] Provide bulk mark-all-as-read action and sync badge state.
+  - _Audit 2025-10-22_: Inbox now segments Today vs Earlier with badge dots, includes mark-all control tied to `NotificationService`
+    unread notifier, and keeps navigation badge counts in sync.
 
 ### 7. Profile & Settings
-- [ ] **[P2] 7.1 ProfileHub**
-  - [ ] Reorganize `ProfileScreen` into Personal info, Security, and Preferences sections.
-  - [ ] Ensure theme toggle leverages `ThemeController` and edits show confirmation snackbars.
-- [ ] **[P2] 7.2 SupportCenter**
-  - [ ] Add static Help & FAQ list backed by JSON mock data.
-  - [ ] Implement detail view with localization-ready content.
-
-### 8. Data & Content Management
-- [ ] **[P2] 8.1 MockDataExpansion**
-  - [ ] Expand `lib/services/` datasets with realistic personas, groups, and narratives.
-  - [ ] Ensure each screen consumes contextually relevant entries stored centrally.
-- [ ] **[P2] 8.2 LocalizationPrep**
-  - [ ] Move key UI strings into a localization map with English defaults.
-  - [ ] Hook widgets into the localization structure for future translation.
-
-### 9. Quality Assurance & Documentation
-- [ ] **[P1] 9.1 FlowAcceptanceTests**
-  - [ ] Script manual test cases for happy and edge paths per user story.
-  - [ ] Store acceptance checklist within `AGENTS.md` for team reference.
-- [ ] **[P1] 9.2 WidgetTestScaffolding**
-  - [ ] Add foundational widget tests for navigation and state changes.
-  - [ ] Cover theme toggle, group contribution, and savings boost interactions.
-- [ ] **[P2] 9.3 HandoffAppendix**
-  - [ ] Maintain changelog entries with date, contributor, and summary.
-  - [ ] Ensure implementation notes remain up to date for coordinated delivery.
+- [x] **[P2] 7.1 ProfileHub**
+  - [x] Reorganize `ProfileScreen` into Personal info, Security, and Preferences sections.
+  - [x] Ensure theme toggle leverages `ThemeController` and edits show confirmation snackbars.
+  - _Audit 2025-10-22_: Profile hub now features a gradient hero with quick actions, InfoCard sections for personal, security, and preference controls, snackbars on toggles (including theme), language selector, and an elevated logout call-to-action.
+- [x] **[P2] 7.2 SupportCenter**
+  - [x] Add static Help & FAQ list backed by JSON mock data.
+  - [x] Implement detail view with localization-ready content.
+  - _Audit 2025-10-22_: Support center now loads localized JSON articles, adds category chips/search, and routes to detailed guidance with follow-up contact messaging.
 
 ### QA Checkpoints
 - **[P0 Navigation Slice]** Confirm splash → auth → main tabs, ensure `MainScreen` preserves state, record issues.
@@ -191,3 +193,17 @@
 - **[P1 Onboarding Slice]** Walk through onboarding copy changes, verify skip, confirm analytics stub.
 - **[P1 Savings & Groups Slice]** Play through group list/detail and savings goal flows, note data inconsistencies.
 - **[P2 Support Slice]** Review profile/help localization prep once content updates land.
+
+### 10. Wallet & Cashflow Journeys
+- [x] **[P1] 10.1 DepositFlowPrototype**
+  - [x] Build an interactive deposit flow (amount entry → channel selection → confirmation) that updates wallet balance and logs a transaction locally.
+  - [x] Include a review step outlining fees and reference IDs to mirror regulatory requirements.
+  - _Audit 2025-10-22_: Home quick action launches a three-step DepositFlowScreen that validates amount, captures MoMo channel, persists wallet updates, mirrors the transaction (with channel, fee, reference metadata), and drops a receipt notification.
+- [x] **[P1] 10.2 WithdrawalFlowPrototype**
+  - [x] Implement a withdrawal request experience with compliance checklist, status feedback, and mock failure scenarios.
+  - [x] Sync withdrawal outcomes to the Transactions list and trigger notification badges.
+  - _Audit 2025-10-22_: Withdrawal flow now walks users through amount, compliance, destination, and review steps, logs status-aware transactions, updates wallet balances on success, and raises wallet notifications for success, pending, and failure demos.
+- [x] **[P2] 10.3 CashflowReceipts**
+  - [x] Provide shareable receipt modals/PDF stubs for deposits and withdrawals accessible from detail views.
+  - [x] Allow users to export recent cashflow activity for offline records (CSV or PDF stub).
+  - _Audit 2025-10-22_: Transaction detail modals now launch a dedicated receipt preview with copy/share stubs, deposit and withdrawal flows surface "View receipt" CTAs on completion, and the Transactions export sheet copies CSV summaries with PDF email placeholders.
