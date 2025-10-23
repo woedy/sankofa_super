@@ -1,0 +1,165 @@
+[
+  {
+    "id": "private-group-basics",
+    "category": "Susu Groups",
+    "title": {"en": "How do I start a private Susu group?"},
+    "summary": {
+      "en": "Walk through the creation wizard to set your circle's size, cadence, and invites."
+    },
+    "sections": [
+      {
+        "heading": {"en": "Launch the wizard"},
+        "body": {
+          "en": [
+            "Open the Groups tab and use the Create Private Group action to launch the four-step setup wizard.",
+            "Give your circle a friendly name, define how many members will participate, and select the contribution amount everyone will send each cycle."
+          ]
+        }
+      },
+      {
+        "heading": {"en": "Set rules & invites"},
+        "body": {
+          "en": [
+            "Pick how frequently payouts rotate and whether new members need verification before joining.",
+            "Add invitees with their name and mobile number. We'll stage the invitations until you're ready to kick off the group."
+          ]
+        }
+      },
+      {
+        "heading": {"en": "Review before you launch"},
+        "body": {
+          "en": [
+            "On the final step, confirm the start date, payout order, and invite list before saving.",
+            "Once confirmed, invitees move into the pending list where you can send reminders and mark them as joined when they accept."
+          ]
+        }
+      }
+    ],
+    "tags": ["groups", "setup", "invites"]
+  },
+  {
+    "id": "goal-progress-tips",
+    "category": "Savings Goals",
+    "title": {"en": "How can I keep a goal on track?"},
+    "summary": {
+      "en": "Use milestones, automatic nudges, and boosts to stay aligned with your timeline."
+    },
+    "sections": [
+      {
+        "heading": {"en": "Track your milestones"},
+        "body": {
+          "en": [
+            "Each goal highlights 25%, 50%, and 75% milestones. Celebrate these wins and review how much remains to reach 100%.",
+            "If you fall behind schedule, the deadline sort helps spotlight goals needing extra attention."
+          ]
+        }
+      },
+      {
+        "heading": {"en": "Boost when needed"},
+        "body": {
+          "en": [
+            "From the goal detail screen, add a boost that immediately updates progress and logs a matching wallet transaction.",
+            "Boosts that cross a milestone will trigger a notification and badge so you can share the good news." 
+          ]
+        }
+      },
+      {
+        "heading": {"en": "Stay accountable"},
+        "body": {
+          "en": [
+            "Enable goal nudges in Profile → Preferences to receive reminders ahead of major target dates.",
+            "Review the contribution history to understand how consistent your deposits have been over time." 
+          ]
+        }
+      }
+    ],
+    "tags": ["savings", "milestones", "boosts"]
+  },
+  {
+    "id": "wallet-deposits",
+    "category": "Wallet & Cashflow",
+    "title": {"en": "What happens when I deposit funds?"},
+    "summary": {
+      "en": "Deposits update your wallet balance immediately and log a compliant receipt."
+    },
+    "sections": [
+      {
+        "heading": {"en": "Choose a channel"},
+        "body": {
+          "en": [
+            "Deposits can be initiated from Home or Transactions. Pick a supported mobile money provider and enter the amount you'd like to top up.",
+            "Review estimated fees and references before you submit." 
+          ]
+        }
+      },
+      {
+        "heading": {"en": "Confirm and receipt"},
+        "body": {
+          "en": [
+            "After confirming, your wallet balance increases instantly in the app while the transaction history adds a new entry with status, channel, and reference ID.",
+            "You'll also see a wallet notification so statements stay synced when exports arrive." 
+          ]
+        }
+      }
+    ],
+    "tags": ["wallet", "deposits", "receipts"]
+  },
+  {
+    "id": "withdrawal-approvals",
+    "category": "Wallet & Cashflow",
+    "title": {"en": "Why was my withdrawal placed on hold?"},
+    "summary": {
+      "en": "Compliance checks can pause payouts while we verify account details or limits."
+    },
+    "sections": [
+      {
+        "heading": {"en": "Pending reviews"},
+        "body": {
+          "en": [
+            "If you enable the hold toggle during a withdrawal, we'll flag the request for manual review.",
+            "You'll receive a pending notification while our team verifies identity and transfer limits." 
+          ]
+        }
+      },
+      {
+        "heading": {"en": "Next steps"},
+        "body": {
+          "en": [
+            "Once cleared, the transaction status updates automatically and you get a confirmation message.",
+            "If the request cannot be completed, the transaction timeline explains what to fix before trying again." 
+          ]
+        }
+      }
+    ],
+    "tags": ["wallet", "withdrawals", "compliance"]
+  },
+  {
+    "id": "account-security",
+    "category": "Account & Security",
+    "title": {"en": "How do I keep my account secure?"},
+    "summary": {
+      "en": "Use two-step verification, biometrics, and trusted device reviews to stay protected."
+    },
+    "sections": [
+      {
+        "heading": {"en": "Enable layered protection"},
+        "body": {
+          "en": [
+            "Turn on two-step verification under Profile → Security to confirm new sign-ins.",
+            "Enable biometric sign-in for faster but secure access on your trusted devices." 
+          ]
+        }
+      },
+      {
+        "heading": {"en": "Review active sessions"},
+        "body": {
+          "en": [
+            "Check trusted devices regularly and revoke access you no longer recognize.",
+            "We'll send you transaction alerts and savings nudges so unusual activity gets your attention right away." 
+          ]
+        }
+      }
+    ],
+    "tags": ["security", "account", "alerts"]
+  }
+]
