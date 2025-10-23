@@ -17,6 +17,7 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   final NotificationService _notificationService = NotificationService();
   final PageStorageBucket _bucket = PageStorageBucket();
+  late final ValueNotifier<int> _unreadNotifier;
   int _currentIndex = 0;
   int _unreadNotifications = 0;
 
@@ -31,14 +32,25 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
-    _loadUnreadNotifications();
+    _unreadNotifier = _notificationService.unreadCountNotifier;
+    _unreadNotifications = _unreadNotifier.value;
+    _unreadNotifier.addListener(_handleUnreadChange);
+    _primeNotifications();
   }
 
-  Future<void> _loadUnreadNotifications() async {
-    final notifications = await _notificationService.getNotifications();
-    final unread = notifications.where((n) => !n.isRead).length;
+  Future<void> _primeNotifications() async {
+    await _notificationService.getNotifications();
+  }
+
+  void _handleUnreadChange() {
     if (!mounted) return;
-    setState(() => _unreadNotifications = unread);
+    setState(() => _unreadNotifications = _unreadNotifier.value);
+  }
+
+  @override
+  void dispose() {
+    _unreadNotifier.removeListener(_handleUnreadChange);
+    super.dispose();
   }
 
   @override
