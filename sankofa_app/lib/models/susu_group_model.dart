@@ -1,13 +1,22 @@
+import 'group_invite_model.dart';
+
 class SusuGroupModel {
   final String id;
   final String name;
   final List<String> memberIds;
   final List<String> memberNames;
+  final List<GroupInviteModel> invites;
+  final int targetMemberCount;
   final double contributionAmount;
   final int cycleNumber;
   final int totalCycles;
   final DateTime nextPayoutDate;
   final String payoutOrder;
+  final bool isPublic;
+  final String? description;
+  final String? frequency;
+  final String? location;
+  final bool requiresApproval;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -16,11 +25,18 @@ class SusuGroupModel {
     required this.name,
     required this.memberIds,
     required this.memberNames,
+    required this.invites,
+    required this.targetMemberCount,
     required this.contributionAmount,
     required this.cycleNumber,
     required this.totalCycles,
     required this.nextPayoutDate,
     required this.payoutOrder,
+    this.isPublic = false,
+    this.description,
+    this.frequency,
+    this.location,
+    this.requiresApproval = false,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -30,11 +46,18 @@ class SusuGroupModel {
     'name': name,
     'memberIds': memberIds,
     'memberNames': memberNames,
+    'invites': invites.map((invite) => invite.toJson()).toList(),
+    'targetMemberCount': targetMemberCount,
     'contributionAmount': contributionAmount,
     'cycleNumber': cycleNumber,
     'totalCycles': totalCycles,
     'nextPayoutDate': nextPayoutDate.toIso8601String(),
     'payoutOrder': payoutOrder,
+    'isPublic': isPublic,
+    'description': description,
+    'frequency': frequency,
+    'location': location,
+    'requiresApproval': requiresApproval,
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
   };
@@ -44,11 +67,23 @@ class SusuGroupModel {
     name: json['name'] as String,
     memberIds: List<String>.from(json['memberIds'] as List),
     memberNames: List<String>.from(json['memberNames'] as List),
+    invites: (json['invites'] as List?)
+            ?.map((item) =>
+                GroupInviteModel.fromJson(item as Map<String, dynamic>))
+            .toList() ??
+        const [],
+    targetMemberCount:
+        json['targetMemberCount'] as int? ?? List<String>.from(json['memberNames'] as List).length,
     contributionAmount: (json['contributionAmount'] as num).toDouble(),
     cycleNumber: json['cycleNumber'] as int,
     totalCycles: json['totalCycles'] as int,
     nextPayoutDate: DateTime.parse(json['nextPayoutDate'] as String),
     payoutOrder: json['payoutOrder'] as String,
+    isPublic: json['isPublic'] as bool? ?? false,
+    description: json['description'] as String?,
+    frequency: json['frequency'] as String?,
+    location: json['location'] as String?,
+    requiresApproval: json['requiresApproval'] as bool? ?? false,
     createdAt: DateTime.parse(json['createdAt'] as String),
     updatedAt: DateTime.parse(json['updatedAt'] as String),
   );
@@ -58,11 +93,18 @@ class SusuGroupModel {
     String? name,
     List<String>? memberIds,
     List<String>? memberNames,
+    List<GroupInviteModel>? invites,
+    int? targetMemberCount,
     double? contributionAmount,
     int? cycleNumber,
     int? totalCycles,
     DateTime? nextPayoutDate,
     String? payoutOrder,
+    bool? isPublic,
+    String? description,
+    String? frequency,
+    String? location,
+    bool? requiresApproval,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => SusuGroupModel(
@@ -70,11 +112,18 @@ class SusuGroupModel {
     name: name ?? this.name,
     memberIds: memberIds ?? this.memberIds,
     memberNames: memberNames ?? this.memberNames,
+    invites: invites ?? this.invites,
+    targetMemberCount: targetMemberCount ?? this.targetMemberCount,
     contributionAmount: contributionAmount ?? this.contributionAmount,
     cycleNumber: cycleNumber ?? this.cycleNumber,
     totalCycles: totalCycles ?? this.totalCycles,
     nextPayoutDate: nextPayoutDate ?? this.nextPayoutDate,
     payoutOrder: payoutOrder ?? this.payoutOrder,
+    isPublic: isPublic ?? this.isPublic,
+    description: description ?? this.description,
+    frequency: frequency ?? this.frequency,
+    location: location ?? this.location,
+    requiresApproval: requiresApproval ?? this.requiresApproval,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
