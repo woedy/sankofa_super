@@ -1,8 +1,12 @@
+import 'group_invite_model.dart';
+
 class SusuGroupModel {
   final String id;
   final String name;
   final List<String> memberIds;
   final List<String> memberNames;
+  final List<GroupInviteModel> invites;
+  final int targetMemberCount;
   final double contributionAmount;
   final int cycleNumber;
   final int totalCycles;
@@ -16,6 +20,8 @@ class SusuGroupModel {
     required this.name,
     required this.memberIds,
     required this.memberNames,
+    required this.invites,
+    required this.targetMemberCount,
     required this.contributionAmount,
     required this.cycleNumber,
     required this.totalCycles,
@@ -30,6 +36,8 @@ class SusuGroupModel {
     'name': name,
     'memberIds': memberIds,
     'memberNames': memberNames,
+    'invites': invites.map((invite) => invite.toJson()).toList(),
+    'targetMemberCount': targetMemberCount,
     'contributionAmount': contributionAmount,
     'cycleNumber': cycleNumber,
     'totalCycles': totalCycles,
@@ -44,6 +52,13 @@ class SusuGroupModel {
     name: json['name'] as String,
     memberIds: List<String>.from(json['memberIds'] as List),
     memberNames: List<String>.from(json['memberNames'] as List),
+    invites: (json['invites'] as List?)
+            ?.map((item) =>
+                GroupInviteModel.fromJson(item as Map<String, dynamic>))
+            .toList() ??
+        const [],
+    targetMemberCount:
+        json['targetMemberCount'] as int? ?? List<String>.from(json['memberNames'] as List).length,
     contributionAmount: (json['contributionAmount'] as num).toDouble(),
     cycleNumber: json['cycleNumber'] as int,
     totalCycles: json['totalCycles'] as int,
@@ -58,6 +73,8 @@ class SusuGroupModel {
     String? name,
     List<String>? memberIds,
     List<String>? memberNames,
+    List<GroupInviteModel>? invites,
+    int? targetMemberCount,
     double? contributionAmount,
     int? cycleNumber,
     int? totalCycles,
@@ -70,6 +87,8 @@ class SusuGroupModel {
     name: name ?? this.name,
     memberIds: memberIds ?? this.memberIds,
     memberNames: memberNames ?? this.memberNames,
+    invites: invites ?? this.invites,
+    targetMemberCount: targetMemberCount ?? this.targetMemberCount,
     contributionAmount: contributionAmount ?? this.contributionAmount,
     cycleNumber: cycleNumber ?? this.cycleNumber,
     totalCycles: totalCycles ?? this.totalCycles,
