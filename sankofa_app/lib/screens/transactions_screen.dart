@@ -374,41 +374,53 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final isCompact = constraints.maxWidth < 520;
-                    final buttons = <Widget>[
-                      FilledButton.icon(
-                        onPressed: _openDepositFlow,
-                        icon: const Icon(Icons.add_circle_outline),
-                        label: const Text('New deposit'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: _openWithdrawalFlow,
-                        icon: const Icon(Icons.remove_circle_outline),
-                        label: const Text('New withdrawal'),
-                      ),
-                      if (_hasActiveFilters)
-                        TextButton.icon(
-                          onPressed: _resetFilters,
-                          icon: const Icon(Icons.refresh, size: 18),
-                          label: const Text('Reset filters'),
-                        ),
-                    ];
+                    final depositButton = FilledButton.icon(
+                      onPressed: _openDepositFlow,
+                      icon: const Icon(Icons.add_circle_outline),
+                      label: const Text('New deposit'),
+                    );
+                    final withdrawalButton = OutlinedButton.icon(
+                      onPressed: _openWithdrawalFlow,
+                      icon: const Icon(Icons.remove_circle_outline),
+                      label: const Text('New withdrawal'),
+                    );
+                    final resetButton = _hasActiveFilters
+                        ? TextButton.icon(
+                            onPressed: _resetFilters,
+                            icon: const Icon(Icons.refresh, size: 18),
+                            label: const Text('Reset filters'),
+                          )
+                        : null;
 
                     if (isCompact) {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          for (var i = 0; i < buttons.length; i++) ...[
-                            SizedBox(width: double.infinity, child: buttons[i]),
-                            if (i != buttons.length - 1) const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(child: depositButton),
+                              const SizedBox(width: 12),
+                              Expanded(child: withdrawalButton),
+                            ],
+                          ),
+                          if (resetButton != null) ...[
+                            const SizedBox(height: 12),
+                            SizedBox(width: double.infinity, child: resetButton),
                           ],
                         ],
                       );
                     }
 
-                    return Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: buttons,
+                    return Row(
+                      children: [
+                        depositButton,
+                        const SizedBox(width: 12),
+                        withdrawalButton,
+                        if (resetButton != null) ...[
+                          const SizedBox(width: 12),
+                          resetButton,
+                        ],
+                      ],
                     );
                   },
                 ),
