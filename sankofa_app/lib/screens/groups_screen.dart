@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:sankofasave/models/group_invite_model.dart';
 import 'package:sankofasave/models/susu_group_model.dart';
+import 'package:sankofasave/models/user_model.dart';
+import 'package:sankofasave/screens/group_creation_wizard_screen.dart';
 import 'package:sankofasave/screens/group_detail_screen.dart';
+import 'package:sankofasave/screens/group_join_wizard_screen.dart';
 import 'package:sankofasave/services/group_service.dart';
+import 'package:sankofasave/services/user_service.dart';
 import 'package:sankofasave/utils/user_avatar_resolver.dart';
 import 'package:sankofasave/widgets/user_avatar.dart';
 import 'package:sankofasave/ui/components/ui.dart';
@@ -20,10 +25,12 @@ class GroupsScreen extends StatefulWidget {
 
 class _GroupsScreenState extends State<GroupsScreen> {
   final GroupService _groupService = GroupService();
+  final UserService _userService = UserService();
   List<SusuGroupModel> _groups = [];
   List<SusuGroupModel> _filteredGroups = [];
   final TextEditingController _searchController = TextEditingController();
   int _selectedFilter = 0;
+  UserModel? _currentUser;
 
   @override
   void initState() {
@@ -33,9 +40,11 @@ class _GroupsScreenState extends State<GroupsScreen> {
   }
 
   Future<void> _loadGroups() async {
+    final user = await _userService.getCurrentUser();
     final groups = await _groupService.getGroups();
     setState(() {
       _groups = groups;
+      _currentUser = user;
     });
     _applyFilters();
   }
@@ -43,6 +52,42 @@ class _GroupsScreenState extends State<GroupsScreen> {
   void _openProcess(ProcessFlowModel flow) {
     Navigator.of(context).push(
       RouteTransitions.slideUp(ProcessFlowScreen(flow: flow)),
+    );
+  }
+
+  Future<void> _openCreationWizard() async {
+    final createdGroup = await Navigator.of(context).push<SusuGroupModel>(
+      RouteTransitions.slideUp(const GroupCreationWizardScreen()),
+    );
+    if (createdGroup == null) return;
+
+    await _loadGroups();
+    if (!mounted) return;
+    final confirmedCount = createdGroup.memberNames.length;
+    final pendingCount = createdGroup.targetMemberCount - confirmedCount;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${createdGroup.name} is live – $confirmedCount confirmed, $pendingCount invites sent.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openJoinWizard({SusuGroupModel? preselected}) async {
+    final joinedGroup = await Navigator.of(context).push<SusuGroupModel>(
+      RouteTransitions.slideUp(
+        GroupJoinWizardScreen(initialGroupId: preselected?.id),
+      ),
+    );
+    if (joinedGroup == null) return;
+
+    await _loadGroups();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Welcome to ${joinedGroup.name}!'),
+      ),
     );
   }
 
@@ -126,7 +171,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         heroTag: 'groups_fab',
-        onPressed: () => _openProcess(ProcessFlows.createGroup),
+        onPressed: _openCreationWizard,
         backgroundColor: Theme.of(context).colorScheme.primary,
         icon: const Icon(Icons.lock_outline, color: Colors.white),
         label: const Text('Create Private Group', style: TextStyle(color: Colors.white)),
@@ -178,22 +223,20 @@ class _GroupsScreenState extends State<GroupsScreen> {
             children: [
               SizedBox(
                 width: 220,
-                child: ElevatedButton.icon(
-                  onPressed: () => _openProcess(ProcessFlows.joinGroup),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: theme.colorScheme.secondary,
-                    foregroundColor: theme.colorScheme.onSecondary,
+                child: FilledButton.icon(
+                  onPressed: () => _openJoinWizard(),
+                  style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 18),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
-                  icon: const Icon(Icons.groups_outlined),
-                  label: const Text('How public groups work'),
+                  icon: const Icon(Icons.group_add_outlined),
+                  label: const Text('Join a public group'),
                 ),
               ),
               SizedBox(
                 width: 220,
                 child: OutlinedButton.icon(
-                  onPressed: () => _openProcess(ProcessFlows.createGroup),
+                  onPressed: _openCreationWizard,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: theme.colorScheme.primary,
                     side: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.4)),
@@ -202,6 +245,19 @@ class _GroupsScreenState extends State<GroupsScreen> {
                   ),
                   icon: const Icon(Icons.lock_person_outlined),
                   label: const Text('Create a private circle'),
+                ),
+              ),
+              SizedBox(
+                width: 220,
+                child: TextButton.icon(
+                  onPressed: () => _openProcess(ProcessFlows.joinGroup),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 18),
+                    foregroundColor: theme.colorScheme.secondary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  icon: const Icon(Icons.info_outline),
+                  label: const Text('How public groups work'),
                 ),
               ),
             ],
@@ -274,15 +330,21 @@ class _GroupsScreenState extends State<GroupsScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            'Try adjusting the search or cycle filters, or learn how to create a private circle tailored to your needs.',
+            'Try adjusting the search or cycle filters, or jump straight into creating a private circle tailored to your needs.',
             style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                   height: 1.5,
                 ),
           ),
           const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _openJoinWizard,
+            icon: const Icon(Icons.group_add_outlined),
+            label: const Text('Browse public groups'),
+          ),
+          const SizedBox(height: 12),
           OutlinedButton.icon(
-            onPressed: () => _openProcess(ProcessFlows.createGroup),
+            onPressed: _openCreationWizard,
             style: OutlinedButton.styleFrom(
               foregroundColor: theme.colorScheme.primary,
               side: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.4)),
@@ -290,7 +352,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
             icon: const Icon(Icons.lightbulb_outline),
-            label: const Text('See how to start a private group'),
+            label: const Text('Start a private group'),
           ),
         ],
       ),
@@ -302,6 +364,9 @@ class _GroupsScreenState extends State<GroupsScreen> {
     final contribution = 'GH₵ ${NumberFormat('#,##0.00').format(group.contributionAmount)}';
     final payoutDate = DateFormat('MMM dd').format(group.nextPayoutDate);
     final progress = group.cycleNumber / group.totalCycles;
+    final userId = _currentUser?.id;
+    final isMember = userId != null && group.memberIds.contains(userId);
+    final seatsOpen = _availableSeats(group);
     final status = progress < 0.34
         ? 'Newly started'
         : progress < 0.67
@@ -360,11 +425,21 @@ class _GroupsScreenState extends State<GroupsScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${group.memberNames.length} active members',
+                        _buildMemberSummary(group),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                         ),
                       ),
+                      if (group.isPublic && group.description != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          group.description!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+                                height: 1.45,
+                              ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -416,6 +491,27 @@ class _GroupsScreenState extends State<GroupsScreen> {
                 ),
               ],
             ),
+            if (group.frequency != null || group.location != null) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: [
+                  if (group.frequency != null)
+                    _buildDetailChip(
+                      Icons.schedule,
+                      group.frequency!,
+                      theme.colorScheme.secondary,
+                    ),
+                  if (group.location != null)
+                    _buildDetailChip(
+                      Icons.location_on_outlined,
+                      group.location!,
+                      theme.colorScheme.tertiary,
+                    ),
+                ],
+              ),
+            ],
             const SizedBox(height: 16),
             ProgressSummaryBar(
               progress: progress,
@@ -425,8 +521,136 @@ class _GroupsScreenState extends State<GroupsScreen> {
             ),
             const SizedBox(height: 16),
             _buildMemberRow(group),
+            if (group.invites.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _buildInviteIndicators(group),
+            ],
+            if (group.isPublic) ...[
+              const SizedBox(height: 16),
+              _buildPublicJoinFooter(group, seatsOpen, isMember),
+            ],
           ],
         ),
+      ),
+    );
+  }
+
+  String _buildMemberSummary(SusuGroupModel group) {
+    final active = group.memberNames.length;
+    final ready = group.invites
+        .where((invite) => invite.status == GroupInviteStatus.accepted)
+        .length;
+    final pending = group.invites
+        .where((invite) => invite.status == GroupInviteStatus.pending)
+        .length;
+
+    final parts = <String>['$active active'];
+    if (ready > 0) {
+      parts.add('$ready ready to join');
+    }
+    if (pending > 0) {
+      parts.add('$pending pending');
+    }
+    if (group.isPublic) {
+      final openSeats = _availableSeats(group);
+      if (openSeats > 0) {
+        parts.add('$openSeats open seats');
+      }
+    }
+    return parts.join(' • ');
+  }
+
+  int _availableSeats(SusuGroupModel group) {
+    final seats = group.targetMemberCount - group.memberNames.length;
+    return seats < 0 ? 0 : seats;
+  }
+
+  Widget _buildDetailChip(IconData icon, String label, Color color) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPublicJoinFooter(
+    SusuGroupModel group,
+    int seatsOpen,
+    bool isMember,
+  ) {
+    final theme = Theme.of(context);
+    final copy = group.requiresApproval
+        ? 'Admins review each application before confirming a new seat.'
+        : 'Secure your seat instantly and we will activate reminders for the next cycle.';
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.group_add_outlined, color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  seatsOpen > 0
+                      ? '$seatsOpen ${seatsOpen == 1 ? 'seat' : 'seats'} open for newcomers'
+                      : 'Currently full – check back soon',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            copy,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+              height: 1.45,
+            ),
+          ),
+          if (!isMember && seatsOpen > 0) ...[
+            const SizedBox(height: 12),
+            FilledButton.tonal(
+              onPressed: () => _openJoinWizard(preselected: group),
+              child: const Text('Join this group'),
+            ),
+          ],
+          if (isMember) ...[
+            const SizedBox(height: 12),
+            Text(
+              'You already belong to this circle – explore the detail view for the latest activity.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -473,6 +697,67 @@ class _GroupsScreenState extends State<GroupsScreen> {
     );
   }
 
+  Widget _buildInviteIndicators(SusuGroupModel group) {
+    final theme = Theme.of(context);
+    final pendingCount = group.invites
+        .where((invite) => invite.status == GroupInviteStatus.pending)
+        .length;
+    final kycPending = group.invites
+        .where((invite) =>
+            invite.status != GroupInviteStatus.declined && !invite.kycCompleted)
+        .length;
+    final accepted = group.invites
+        .where((invite) => invite.status == GroupInviteStatus.accepted)
+        .length;
+    final blockers = (group.targetMemberCount -
+            (group.memberNames.length + accepted))
+        .clamp(0, group.targetMemberCount);
+
+    final chips = <Widget>[];
+    if (pendingCount > 0) {
+      chips.add(
+        _GroupInsightChip(
+          icon: Icons.hourglass_bottom,
+          label:
+              '$pendingCount invite${pendingCount == 1 ? '' : 's'} pending',
+          foreground: theme.colorScheme.tertiary,
+          background: theme.colorScheme.tertiary.withValues(alpha: 0.12),
+        ),
+      );
+    }
+    if (kycPending > 0) {
+      chips.add(
+        _GroupInsightChip(
+          icon: Icons.verified_outlined,
+          label:
+              '$kycPending KYC ${kycPending == 1 ? 'check' : 'checks'} outstanding',
+          foreground: theme.colorScheme.primary,
+          background: theme.colorScheme.primary.withValues(alpha: 0.12),
+        ),
+      );
+    }
+    chips.add(
+      _GroupInsightChip(
+        icon: blockers > 0 ? Icons.warning_rounded : Icons.rocket_launch,
+        label: blockers > 0
+            ? '$blockers slot${blockers == 1 ? '' : 's'} blocking kickoff'
+            : 'Cycle ready to launch',
+        foreground: blockers > 0
+            ? theme.colorScheme.error
+            : theme.colorScheme.secondary,
+        background: blockers > 0
+            ? theme.colorScheme.error.withValues(alpha: 0.12)
+            : theme.colorScheme.secondary.withValues(alpha: 0.12),
+      ),
+    );
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: chips,
+    );
+  }
+
   Widget _buildMetric({
     required String label,
     required String value,
@@ -503,6 +788,45 @@ class _GroupsScreenState extends State<GroupsScreen> {
           style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
         ),
       ],
+    );
+  }
+}
+
+class _GroupInsightChip extends StatelessWidget {
+  const _GroupInsightChip({
+    required this.icon,
+    required this.label,
+    required this.foreground,
+    required this.background,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color foreground;
+  final Color background;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: foreground),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: foreground,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+        ],
+      ),
     );
   }
 }

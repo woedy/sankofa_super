@@ -3,12 +3,19 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:sankofasave/controllers/theme_controller.dart';
 import 'package:sankofasave/data/process_flows.dart';
+import 'package:sankofasave/models/savings_goal_model.dart';
+import 'package:sankofasave/models/susu_group_model.dart';
 import 'package:sankofasave/models/transaction_model.dart';
 import 'package:sankofasave/models/user_model.dart';
 import 'package:sankofasave/models/process_flow_model.dart';
+import 'package:sankofasave/screens/deposit_flow_screen.dart';
+import 'package:sankofasave/screens/withdrawal_flow_screen.dart';
+import 'package:sankofasave/screens/group_creation_wizard_screen.dart';
+import 'package:sankofasave/screens/group_join_wizard_screen.dart';
 import 'package:sankofasave/screens/notifications_screen.dart';
 import 'package:sankofasave/screens/process_flow_screen.dart';
-import 'package:sankofasave/screens/transaction_detail_screen.dart';
+import 'package:sankofasave/screens/savings_goal_wizard_screen.dart';
+import 'package:sankofasave/screens/transaction_detail_modal.dart';
 import 'package:sankofasave/screens/transactions_screen.dart';
 import 'package:sankofasave/services/transaction_service.dart';
 import 'package:sankofasave/services/user_service.dart';
@@ -299,25 +306,31 @@ class _HomeScreenState extends State<HomeScreen> {
                 label: 'Deposit',
                 icon: Icons.add_circle_outline,
                 color: Theme.of(context).colorScheme.secondary,
-                onTap: () => _openProcess(ProcessFlows.deposit),
+                onTap: _launchDepositFlow,
               ),
               _QuickActionItem(
                 label: 'Withdraw',
                 icon: Icons.remove_circle_outline,
                 color: Theme.of(context).colorScheme.primary,
-                onTap: () => _openProcess(ProcessFlows.withdrawal),
+                onTap: _launchWithdrawalFlow,
               ),
               _QuickActionItem(
                 label: 'Join Public Group',
                 icon: Icons.group_add_outlined,
                 color: Theme.of(context).colorScheme.tertiary,
-                onTap: () => _openProcess(ProcessFlows.joinGroup),
+                onTap: _launchGroupJoin,
               ),
               _QuickActionItem(
                 label: 'Create Private Group',
                 icon: Icons.lock_person_outlined,
                 color: Theme.of(context).colorScheme.primaryContainer,
-                onTap: () => _openProcess(ProcessFlows.createGroup),
+                onTap: _launchGroupCreation,
+              ),
+              _QuickActionItem(
+                label: 'New Savings Goal',
+                icon: Icons.flag_circle_outlined,
+                color: Theme.of(context).colorScheme.secondaryContainer,
+                onTap: _launchGoalCreation,
               ),
               _QuickActionItem(
                 label: 'Boost Savings',
@@ -591,11 +604,7 @@ class _HomeScreenState extends State<HomeScreen> {
         : theme.colorScheme.error;
 
     return GestureDetector(
-      onTap: () => Navigator.of(context).push(
-        RouteTransitions.slideUp(
-          TransactionDetailScreen(transaction: transaction),
-        ),
-      ),
+      onTap: () => showTransactionDetailModal(context, transaction),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(18),
@@ -715,6 +724,74 @@ class _HomeScreenState extends State<HomeScreen> {
       default:
         return Icons.payment;
     }
+  }
+
+  Future<void> _launchDepositFlow() async {
+    final result = await Navigator.of(context).push<bool>(
+      RouteTransitions.slideUp(const DepositFlowScreen()),
+    );
+    if (result == true) {
+      await _loadData();
+      _showSnackBar('Deposit recorded and wallet updated.');
+    }
+  }
+
+  Future<void> _launchWithdrawalFlow() async {
+    final result = await Navigator.of(context).push<WithdrawalSubmissionStatus>(
+      RouteTransitions.slideUp(const WithdrawalFlowScreen()),
+    );
+    if (result != null) {
+      await _loadData();
+      if (!mounted) return;
+      final message = switch (result) {
+        WithdrawalSubmissionStatus.success =>
+            'Withdrawal request submitted. Watch for the confirmation shortly.',
+        WithdrawalSubmissionStatus.pending =>
+            'Withdrawal queued for review. We\'ll update you when it clears.',
+        WithdrawalSubmissionStatus.failed =>
+            'Withdrawal flagged for follow-up. Check notifications for next steps.',
+      };
+      _showSnackBar(message);
+    }
+  }
+
+  Future<void> _launchGroupCreation() async {
+    final createdGroup = await Navigator.of(context).push<SusuGroupModel>(
+      RouteTransitions.slideUp(const GroupCreationWizardScreen()),
+    );
+    if (createdGroup == null) return;
+
+    _showSnackBar(
+      '${createdGroup.name} is ready with ${createdGroup.memberNames.length} members.',
+    );
+  }
+
+  Future<void> _launchGroupJoin() async {
+    final joinedGroup = await Navigator.of(context).push<SusuGroupModel>(
+      RouteTransitions.slideUp(const GroupJoinWizardScreen()),
+    );
+    if (joinedGroup == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Welcome to ${joinedGroup.name}!'),
+      ),
+    );
+  }
+
+  Future<void> _launchGoalCreation() async {
+    final createdGoal = await Navigator.of(context).push<SavingsGoalModel>(
+      RouteTransitions.slideUp(const SavingsGoalWizardScreen()),
+    );
+    if (createdGoal == null) return;
+
+    _showSnackBar('New goal “${createdGoal.title}” is ready to start growing.');
+  }
+
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   void _openProcess(ProcessFlowModel flow) {
@@ -840,3 +917,4 @@ class _ProcessFlowCard extends StatelessWidget {
         ),
       );
 }
+

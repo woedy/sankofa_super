@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sankofasave/models/savings_goal_model.dart';
 import 'package:sankofasave/screens/savings_goal_detail_screen.dart';
+import 'package:sankofasave/screens/savings_goal_wizard_screen.dart';
 import 'package:sankofasave/services/savings_service.dart';
 import 'package:sankofasave/ui/components/ui.dart';
 
@@ -127,7 +128,7 @@ class _SavingsScreenState extends State<SavingsScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         heroTag: 'savings_fab',
-        onPressed: () {},
+        onPressed: _launchGoalWizard,
         backgroundColor: Theme.of(context).colorScheme.secondary,
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text('Add Goal', style: TextStyle(color: Colors.white)),
@@ -135,16 +136,38 @@ class _SavingsScreenState extends State<SavingsScreen> {
     );
   }
 
+  Future<void> _launchGoalWizard() async {
+    final createdGoal = await Navigator.push<SavingsGoalModel>(
+      context,
+      MaterialPageRoute(builder: (_) => const SavingsGoalWizardScreen()),
+    );
+
+    if (createdGoal != null) {
+      await _loadGoals();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('“${createdGoal.title}” is now live in your savings!'),
+        ),
+      );
+    }
+  }
+
   Widget _buildGoalCard(SavingsGoalModel goal) {
     final categoryColor = _getCategoryColor(goal.category);
     final progressPercent = '${(goal.progress * 100).toStringAsFixed(0)}%';
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => SavingsGoalDetailScreen(goal: goal),
-        ),
-      ),
+      onTap: () async {
+        final result = await Navigator.push<SavingsGoalModel>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => SavingsGoalDetailScreen(goal: goal),
+          ),
+        );
+        if (result != null) {
+          _handleGoalUpdated(result);
+        }
+      },
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
@@ -254,6 +277,17 @@ class _SavingsScreenState extends State<SavingsScreen> {
         ),
       ),
     );
+  }
+
+  void _handleGoalUpdated(SavingsGoalModel updatedGoal) {
+    final allGoals = List<SavingsGoalModel>.from(_allGoals);
+    final index = allGoals.indexWhere((goal) => goal.id == updatedGoal.id);
+    if (index == -1) return;
+    allGoals[index] = updatedGoal;
+    setState(() {
+      _allGoals = allGoals;
+      _goals = _sortedGoals(_activeSort, allGoals);
+    });
   }
 
   Widget _buildMeta(String label, String value) {
