@@ -8,6 +8,10 @@ class TransactionModel {
   final DateTime date;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final String? channel;
+  final double? fee;
+  final String? reference;
+  final String? counterparty;
 
   TransactionModel({
     required this.id,
@@ -19,6 +23,10 @@ class TransactionModel {
     required this.date,
     required this.createdAt,
     required this.updatedAt,
+    this.channel,
+    this.fee,
+    this.reference,
+    this.counterparty,
   });
 
   Map<String, dynamic> toJson() => {
@@ -31,6 +39,10 @@ class TransactionModel {
     'date': date.toIso8601String(),
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
+    if (channel != null) 'channel': channel,
+    if (fee != null) 'fee': fee,
+    if (reference != null) 'reference': reference,
+    if (counterparty != null) 'counterparty': counterparty,
   };
 
   factory TransactionModel.fromJson(Map<String, dynamic> json) => TransactionModel(
@@ -43,6 +55,10 @@ class TransactionModel {
     date: DateTime.parse(json['date'] as String),
     createdAt: DateTime.parse(json['createdAt'] as String),
     updatedAt: DateTime.parse(json['updatedAt'] as String),
+    channel: json['channel'] as String?,
+    fee: (json['fee'] as num?)?.toDouble(),
+    reference: json['reference'] as String?,
+    counterparty: json['counterparty'] as String?,
   );
 
   TransactionModel copyWith({
@@ -55,6 +71,10 @@ class TransactionModel {
     DateTime? date,
     DateTime? createdAt,
     DateTime? updatedAt,
+    String? channel,
+    double? fee,
+    String? reference,
+    String? counterparty,
   }) => TransactionModel(
     id: id ?? this.id,
     userId: userId ?? this.userId,
@@ -65,5 +85,9 @@ class TransactionModel {
     date: date ?? this.date,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    channel: channel ?? this.channel,
+    fee: fee ?? this.fee,
+    reference: reference ?? this.reference,
+    counterparty: counterparty ?? this.counterparty,
   );
 }
