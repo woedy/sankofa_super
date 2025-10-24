@@ -20,6 +20,8 @@ pnpm-debug.log*
 .env.*
 !.env.example
 !.env.sample
+!.env.local.example
+!.env.production.example
 
 # Node / Vite (sankofa_admin)
 node_modules/
@@ -97,3 +99,25 @@ windows/build/
 # Linux (Flutter desktop)
 linux/flutter/ephemeral/
 linux/build/
+
+# Python (sankofa_backend)
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.pyc
+*.pyo
+*.pyd
+*.cover
+*.log
+*.pot
+*.py,cover
+*.pyc
+*.mo
+*.egg-info/
+*.egg
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+db.sqlite3
+.venv/
