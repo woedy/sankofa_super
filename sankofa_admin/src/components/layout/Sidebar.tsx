@@ -1,13 +1,14 @@
 import { NavLink } from 'react-router-dom';
 import { 
-  LayoutDashboard, 
-  Users, 
-  CircleDollarSign, 
-  Receipt, 
-  BarChart3, 
-  AlertTriangle, 
+  LayoutDashboard,
+  Users,
+  CircleDollarSign,
+  Receipt,
+  BarChart3,
+  AlertTriangle,
   Settings,
-  Wallet
+  Wallet,
+  Banknote,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -15,6 +16,7 @@ const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Users', href: '/users', icon: Users },
   { name: 'Susu Groups', href: '/groups', icon: Wallet },
+  { name: 'Cashflow Ops', href: '/cashflow', icon: Banknote },
   { name: 'Transactions', href: '/transactions', icon: Receipt },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Disputes', href: '/disputes', icon: AlertTriangle },
@@ -23,7 +25,7 @@ const navigation = [
 
 export default function Sidebar() {
   return (
-    <div className="flex h-screen w-64 flex-col bg-card border-r border-border">
+    <aside className="sticky top-0 z-20 flex h-screen w-64 flex-col border-r border-border bg-card">
       <div className="flex h-16 items-center gap-2 border-b border-border px-6">
         <CircleDollarSign className="h-8 w-8 text-primary" />
         <div>
@@ -31,8 +33,8 @@ export default function Sidebar() {
           <p className="text-xs text-muted-foreground">Ghana Digital Savings</p>
         </div>
       </div>
-      
-      <nav className="flex-1 space-y-1 px-3 py-4">
+
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {navigation.map((item) => (
           <NavLink
             key={item.name}
@@ -64,6 +66,6 @@ export default function Sidebar() {
           </div>
         </div>
       </div>
-    </div>
+    </aside>
   );
 }
