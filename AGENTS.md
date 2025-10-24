@@ -1,32 +1,34 @@
-# SankoFa Save Improvement Blueprint
+# SankoFa Product Improvement Blueprint
 
-## Guiding Principles
-- **StaticDataOnly**: Deliver rich product previews using in-app mock services (`lib/services/`) without introducing live backends.
-- **UserStoryDriven**: Organize every enhancement around explicit user stories with clear acceptance criteria traceable back to this document.
-- **ConsistentFlows**: Ensure list pages, detail views, and forms follow predictable navigation patterns defined here.
-- **ReusableUI**: Favor shared components and styling derived from `lib/theme.dart` and `ThemeController` to minimize duplication.
-- **ProductFocusedCopy**: Prioritize messaging and UX decisions that speak directly to end-users rather than investor demos.
+This document governs all work inside the `sankofa_super` repository. Follow these guardrails when updating the Flutter app (`sankofa_app`) and the React admin console (`sankofa_admin`).
+
+## Cross-Product Guiding Principles
+- **StaticDataOnly**: Ship polished, static experiences backed by the existing mock data services (Flutter) or seed JSON (React). Do not introduce live backends.
+- **UserStoryDriven**: Every slice of work must be framed as a user story with explicit acceptance criteria and a manual QA checklist.
+- **ConsistentFlows**: Align navigation, list/detail parity, and terminology between the mobile app and admin console. Admin experiences should expose the same entities and states surfaced in the app.
+- **ReusableUI**: Prefer shared components and theme primitives (`lib/theme.dart`, shadcn/ui tokens) to keep light/dark parity and responsive layouts consistent.
+- **ProductFocusedCopy**: Write UX copy that supports real operators and members, not investor demos.
 
 ### Priority Legend
 - **[P0]** Immediate slice in progress or next in queue.
 - **[P1]** Important follow-up once P0 slices stabilize.
 - **[P2]** Nice-to-have or dependent on earlier work.
 
-### Execution Strategy
-- **[P0 Navigation Slice]** Document app flow, align routing in `MainScreen`, smoke-test tab handoff.
-- **[P0 Dashboard Slice]** Polish home overview cards, verify quick actions, capture before/after.
-- **[P1 Onboarding Slice]** Iterate splash/onboarding copy, run full entry flow.
-- **[P1 Savings & Groups Slice]** Enhance list/detail parity, validate member and goal visuals.
-- **[P2 Support Slice]** Tackle profile, help center, and localization prep when higher priorities complete.
+## Execution Strategy
+- **[P0 Alignment Slice]** Catalogue feature parity requirements between app and admin. Mirror key data entities, states, and workflows.
+- **[P0 Admin Dashboard Slice]** Enrich the admin KPIs, tables, and notifications using the detailed mock data defined in the app services.
+- **[P1 Member Lifecycle Slice]** Build admin controls that reflect onboarding, KYC, savings, and dispute journeys as described in the app blueprint.
+- **[P1 Insights & Reporting Slice]** Translate app analytics into admin dashboards, ensuring filters and charts respect light/dark themes.
+- **[P2 Support & Settings Slice]** Expand support tools, configuration panels, and localization readiness once higher priorities are stable.
 
-## Task Backlog (One True Source)
+## Shared Task Backlog (One True Source)
 
 ### 1. Foundation & Design System
 - [x] **[P0] 1.1 AuditThemeTokens**
-  - [x] Catalogue colors, typography, elevations, and spacing in `lightTheme`/`darkTheme`.
+  - [x] Catalogue colors, typography, elevations, and spacing in `lib/theme.dart` (app) and `tailwind.config.ts`/`theme.css` (admin).
   - [x] Document theme tokens in `AGENTS.md` for reference by UI tasks.
 - [x] **[P0] 1.2 CreateComponentLibrary**
-  - [x] Define reusable widgets (cards, headers, list tiles, progress bars) under `lib/ui/`.
+  - [x] Define reusable widgets/components under `lib/ui/` (app) and `components/` (admin).
   - [x] Replace at least five ad-hoc implementations across screens with shared components.
 - [x] **[P0] 1.3 EstablishNavigationSchema**
   - [x] Map splash → onboarding → auth → main tabs navigation within `AGENTS.md`.
@@ -53,50 +55,45 @@
   - Navigation: retains tab history stack, bottom bar tap triggers haptic (`HapticFeedback.lightImpact`).
   - Notifications: badges pull from `NotificationService` unread count.
   - Deep links: `Navigator.push` to detail screens (GroupDetail, SavingsGoalDetail, TransactionDetail) maintaining parent tab state.
-- **Component Library Blueprint**
-  - **WalletSummaryCard** (`home_screen.dart`): Displays balance, KYC status pill, optional actions. Props: `balance`, `kycStatus`, `onPrimaryAction`. Responsive: switch to horizontal layout with right-aligned actions when width ≥600.
-  - **GradientIconBadge** (Groups/Savings hero icons): Props: `icon`, `gradientColors`, `diameter`. Responsive: scale diameter based on `MediaQuery.size.width` buckets (56→64→72).
-  - **InfoCard** + **InfoRow** (`transaction_detail_modal.dart`, `savings_goal_detail_screen.dart`): Props: `title`, `children`, `labelWidth`. Responsive: allow label width to shrink and fall back to column layout below 360px.
-  - **EntityListTile** (Groups/Savings/Transactions cards): Props: `leading`, `title`, `subtitle`, `meta`, `statusChip`, `onTap`. Responsive: use `Wrap` for meta/status chips and adjust padding from 20→16 on compact devices.
-  - **ProgressSummaryBar** (Savings progress, group cycles): Props: `progress`, `label`, `secondaryLabel`, `color`. Responsive: animate width, display labels stacked on narrow viewports.
-  - **NotificationCard** standardizing `_getNotificationColor` usage with props: `icon`, `title`, `message`, `timestamp`, `isRead`, `accent`. Responsive: ensure timestamp wraps under message for narrow widths.
-  - **ActionChipRow** (home quick actions, filters): Props: `items`, `onSelected`, `multiSelect`. Responsive: convert to horizontally scrollable `SingleChildScrollView` when wider than screen.
-  - **SectionHeader** (list headers): Props: `title`, `actionLabel`, `onAction`. Responsive: align action below title on compact screens.
-  - **ModalScaffold** helper for bottom sheets/dialogs to unify padding, handle safe areas, and provide max-width of 560 on tablets/desktop.
-- **Implementation Plan**
-  - Create `lib/ui/components/` with files matching component names plus `ui.dart` barrel export.
-  - Introduce `ResponsiveBreakpoints` helper (`small <360`, `medium 360–599`, `large ≥600`) to drive layout decisions.
-  - Refactor `home_screen.dart`, `groups_screen.dart`, `savings_screen.dart`, `transactions_screen.dart`, `notifications_screen.dart`, and detail screens to consume the new widgets incrementally (target ≥5 replacements for acceptance).
-  - Provide story-like demo in a `components_demo_screen.dart` (optional) for visual QA across breakpoints.
-#### Theme Token Catalogue
-- **Colors (Light)** `lib/theme.dart:LightModeColors`
+
+#### Component Library Blueprint (App)
+- **WalletSummaryCard** (`home_screen.dart`): Displays balance, KYC status pill, optional actions. Props: `balance`, `kycStatus`, `onPrimaryAction`. Responsive: switch to horizontal layout with right-aligned actions when width ≥600.
+- **GradientIconBadge** (Groups/Savings hero icons): Props: `icon`, `gradientColors`, `diameter`. Responsive: scale diameter based on `MediaQuery.size.width` buckets (56→64→72).
+- **InfoCard** + **InfoRow** (`transaction_detail_modal.dart`, `savings_goal_detail_screen.dart`): Props: `title`, `children`, `labelWidth`. Responsive: allow label width to shrink and fall back to column layout below 360px.
+- **EntityListTile** (Groups/Savings/Transactions cards): Props: `leading`, `title`, `subtitle`, `meta`, `statusChip`, `onTap`. Responsive: use `Wrap` for meta/status chips and adjust padding from 20→16 on compact devices.
+- **ProgressSummaryBar** (Savings progress, group cycles): Props: `progress`, `label`, `secondaryLabel`, `color`. Responsive: animate width, display labels stacked on narrow viewports.
+- **NotificationCard** standardizing `_getNotificationColor` usage with props: `icon`, `title`, `message`, `timestamp`, `isRead`, `accent`. Responsive: ensure timestamp wraps under message for narrow widths.
+- **ActionChipRow** (home quick actions, filters): Props: `items`, `onSelected`, `multiSelect`. Responsive: convert to horizontally scrollable `SingleChildScrollView` when wider than screen.
+- **SectionHeader** (list headers): Props: `title`, `actionLabel`, `onAction`. Responsive: align action below title on compact screens.
+- **ModalScaffold** helper for bottom sheets/dialogs to unify padding, handle safe areas, and provide max-width of 560 on tablets/desktop.
+
+#### Component Library Blueprint (Admin)
+- **KpiCard** (`components/dashboard/kpi-card.tsx`): Props: `title`, `value`, `trend`, `trendLabel`, `icon`. Support compact stacking under 768px.
+- **DataTableShell** (`components/data-table/`): Encapsulate TanStack table setup with built-in search, filters, and density toggle.
+- **EntityBadge**: Shared status chips (Active, Pending KYC, Overdue) mirroring app vocabulary.
+- **ModalDrawer**: Dual-mode component providing slide-out details on desktop and full-screen dialogs on mobile.
+- **AnalyticsChart**: Wrapper around Recharts with theme-aware color tokens.
+
+### Theme Token Catalogue
+- **App Colors (Light)** `lib/theme.dart:LightModeColors`
   - Primary `#1E3A8A`, OnPrimary `#FFFFFF`, PrimaryContainer `#DEE9FF`, OnPrimaryContainer `#001B3E`
   - Secondary `#14B8A6`, OnSecondary `#FFFFFF`
   - Tertiary `#0891B2`, OnTertiary `#FFFFFF`
   - Error `#DC2626`, OnError `#FFFFFF`, ErrorContainer `#FFDAD6`, OnErrorContainer `#410002`
   - Background `#F2F5FB`, Surface `#FAFAFA`, OnSurface `#0F172A`, SurfaceVariant `#E6ECF7`, Outline `#CBD5F5`
   - AppBarBackground `#FFFFFF`, InversePrimary `#93C5FD`, Shadow `#000000`
-- **Colors (Dark)** `lib/theme.dart:DarkModeColors`
+- **App Colors (Dark)** `lib/theme.dart:DarkModeColors`
   - Primary `#9DB2FF`, OnPrimary `#0B1D55`, PrimaryContainer `#12245C`, OnPrimaryContainer `#DBE2FF`
   - Secondary `#5EEAD4`, OnSecondary `#00382F`
   - Tertiary `#38BDF8`, OnTertiary `#002B42`
   - Error `#FFB4AB`, OnError `#690005`, ErrorContainer `#93000A`, OnErrorContainer `#FFDAD6`
   - Background `#0B1121`, Surface `#101426`, OnSurface `#E5EDFF`, SurfaceVariant `#1E283E`, Outline `#27324A`
   - AppBarBackground `#141B2F`, InversePrimary `#445DAF`, Shadow `#000000`
-- **Typography** `lib/theme.dart:FontSizes`
-  - Base family: `Inter` via `GoogleFonts.inter`
-  - Sizes (pt): Display `57/45/36`, Headline `32/24/22`, Title `22/18/16`, Body `16/14/12`, Label `16/14/12`
-  - Default weights: display/title/body mostly normal–medium, label/title medium, headline small bold
-- **Elevation & Shape**
-  - Card radius set to `20` across light/dark `cardTheme`
-  - Card elevation `0` by default; rely on contextual `BoxShadow` for depth (e.g., `MainScreen` tabs)
-  - SnackBars use primary palette with white typography for contrast
-- **Spacing Patterns**
-  - No centralized spacing constants yet; recurring paddings include `EdgeInsets.symmetric(horizontal: 20)`, `EdgeInsets.all(24)`
-  - Common vertical gaps: `8`, `12`, `16`, `20`, `24`, `32` seen in `home_screen.dart` and peers
-  - Recommend codifying these values when tackling `CreateComponentLibrary`
+- **Admin Tokens** `src/styles/theme.css`
+  - Neutral `#0F172A` ↔ `#E5EDFF`, Primary `#1E3A8A` ↔ `#9DB2FF`, Accent `#14B8A6`, Warning `#F97316`, Success `#22C55E`.
+  - Respect CSS variables `--background`, `--foreground`, `--card`, `--popover`, `--border`, `--input`, `--ring` for dark/light support.
 
-### 2. Core User Journey
+### 2. Core Member Journey (App)
 - [x] **[P1] 2.1 SplashOnboardingRevamp**
   - [x] Update `SplashScreen` and `OnboardingScreen` copy for story-driven messaging.
   - [x] Ensure skip controls function and analytics completion event is stubbed.
@@ -109,7 +106,7 @@
   - [x] Implement guided upload → review → confirm steps in `KYCScreen`.
   - [x] Persist KYC state via `UserService` mock data.
 
-### 3. Main Navigation & Dashboard
+### 3. Member Success (App)
 - [x] **[P0] 3.1 BottomNavConsistency**
   - [x] Add haptic feedback, badges, and state preservation to `MainScreen` tabs.
   - [x] Ensure tab switches retain scroll position and unread badge reflects `NotificationService` data.
@@ -123,31 +120,33 @@
   - [x] Launch `ProcessFlowScreen` with step tracking when a flow is selected.
   - _Audit 2025-10-21_: `home_screen.dart` introduces a Process Demos rail using `EntityListTile`, meta chips, and routes into `ProcessFlowScreen` with static analytics-friendly copy.
 
-### 4. Susu Groups Experience
-- [x] **[P1] 4.1 GroupsListEnhancement**
-  - [x] Implement search-by-name and payout-cycle filters in `GroupsScreen`.
-  - [x] Design empty states and contribution status chips.
-  - _Audit 2025-10-21_: `groups_screen.dart` now features guided search, cycle filter chips, status pills, and an empty-state CTA linking to process demos for creating private circles.
-- **Public group discovery**: `GroupsScreen` surfaces open/public groups with rich metadata, offers a dedicated join wizard, and still links to `ProcessFlowScreen` using `ProcessFlows.joinGroup` for education.
-- **Private group creation**: Quick actions and FAB offer a "Create Private Group" path powered by `ProcessFlows.createGroup`, framing the invite-only setup steps without live backend wiring.
-- [x] **[P1] 4.2 GroupDetailBlueprint**
-  - [x] Add timeline, member roster, and contribution history to `GroupDetailScreen`.
-  - [x] Build contribute modal with amount validation and mock state updates.
-- [x] **[P1] 4.3 ContributionReceiptUI**
-  - [x] Create confirmation screen summarizing contribution details and next steps.
-  - [x] Reference transaction IDs from `TransactionService` and include share option.
-- [x] **[P1] 4.4 PrivateGroupCreationWizard**
-  - [x] Replace the process-flow demo with a guided, multi-step creation form (blueprint → rules → invites) surfaced from the Groups FAB and Home quick action.
-  - [x] Persist draft groups to `GroupService`, including staged members, before final confirmation updates the main list.
-- [x] **[P2] 4.5 GroupInviteTracking**
-  - [x] Add invite-status chips and reminder actions that reflect each prospective member's KYC and acceptance progress.
-  - [x] Surface admin-focused insights (pending slots, cycle start blockers) so backend models capture the necessary state.
-  - _Audit 2025-10-22_: Group detail now surfaces invite insight chips, reminder + confirm actions per invite, syncs reminder counts via `GroupService`, and list cards highlight blockers/pending seats.
-- [x] **[P1] 4.6 PublicGroupJoinWizard**
-  - [x] Build a multi-step join experience for curated public circles with auto-contribution and reminder preferences.
-  - [x] Flag public groups in `GroupService`, update list/detail UIs, and trigger notifications when a seat is claimed.
-  - _Audit 2025-10-22_: New `GroupJoinWizardScreen` guides users through selection → plan → review, `SusuGroupModel` tracks public metadata, and joining updates membership, sends a notification, and refreshes list/detail badges.
+### 4. Admin Enablement (New)
+- [ ] **[P0] 4.1 DataParityAudit**
+  - [ ] Document the canonical member, group, savings, transaction, notification, and dispute models from the app services.
+  - [ ] Create a mapping table for how each field should appear within `sankofa_admin` tables, detail panes, and charts.
+- [ ] **[P0] 4.2 AdminSeedEnrichment**
+  - [ ] Port realistic mock records (≥10 users, ≥6 groups, ≥20 transactions, ≥5 disputes) to admin JSON/TS seeds while honoring status diversity.
+  - [ ] Ensure totals and KPIs reconcile with the same datasets used in the app (wallet balances, contribution progress, payouts).
+- [ ] **[P0] 4.3 DashboardRefresh**
+  - [ ] Expand KPI cards, charts, and recent activity panels to visualize the enriched seed data.
+  - [ ] Validate dark mode color contrast and responsive layouts at 375px, 768px, and 1280px widths.
+- [ ] **[P1] 4.4 MemberOperationsSuite**
+  - [ ] Implement searchable/filterable member management table mirroring KYC, savings goals, and wallet status from the app.
+  - [ ] Provide detail drawer actions for approving KYC, triggering deposits/withdrawals, and viewing transaction history snapshots.
+- [ ] **[P1] 4.5 GroupLifecycleTools**
+  - [ ] Introduce group pipeline views (public/private, cycle status, invite health) referencing app invite tracking metadata.
+  - [ ] Add modals for manual cycle adjustments, payout scheduling, and reminder triggers.
+- [ ] **[P1] 4.6 CashflowOps**
+  - [ ] Surface deposit/withdrawal queues with compliance checklists mirroring app flows.
+  - [ ] Include rejection reasons, fee breakdowns, and export stubs for audit logs.
+- [ ] **[P2] 4.7 Support & Dispute Desk**
+  - [ ] Build dispute triage with severity filters, SLA timers, and escalation actions.
+  - [ ] Add support knowledge base linkage, matching the app's FAQ taxonomy.
+- [ ] **[P2] 4.8 ConfigurationCenter**
+  - [ ] Expand settings for transaction fees, notification templates, and localization toggles.
+  - [ ] Persist selections to mock storage and display success toasts in both themes.
 
+### 5. Savings & Groups (App)
 - [x] **[P1] 5.1 SavingsListRefine**
   - [x] Enhance `SavingsScreen` cards with category, progress, and target date metadata.
   - [x] Support sorting by progress and deadline with milestone microcopy.
@@ -162,7 +161,7 @@
   - [x] Mirror boost activity into `TransactionService` so wallet history reflects personal goal top-ups.
   - [x] Generate celebratory receipts/badges for major milestones (25%, 50%, 75%) and expose them to the Notifications inbox.
 
-### 6. Transactions & Notifications
+### 6. Transactions & Notifications (App)
 - [x] **[P1] 6.1 TransactionsListFilters**
   - [x] Add pill filters, date range picker, and export stub to `TransactionsScreen`.
   - [x] Ensure filtering updates list instantly and displays guidance for empty results.
@@ -174,10 +173,9 @@
 - [x] **[P1] 6.3 NotificationsInbox**
   - [x] Group notifications into Today/Earlier sections with read indicators.
   - [x] Provide bulk mark-all-as-read action and sync badge state.
-  - _Audit 2025-10-22_: Inbox now segments Today vs Earlier with badge dots, includes mark-all control tied to `NotificationService`
-    unread notifier, and keeps navigation badge counts in sync.
+  - _Audit 2025-10-22_: Inbox now segments Today vs Earlier with badge dots, includes mark-all control tied to `NotificationService` unread notifier, and keeps navigation badge counts in sync.
 
-### 7. Profile & Settings
+### 7. Profile & Settings (App)
 - [x] **[P2] 7.1 ProfileHub**
   - [x] Reorganize `ProfileScreen` into Personal info, Security, and Preferences sections.
   - [x] Ensure theme toggle leverages `ThemeController` and edits show confirmation snackbars.
@@ -188,13 +186,12 @@
   - _Audit 2025-10-22_: Support center now loads localized JSON articles, adds category chips/search, and routes to detailed guidance with follow-up contact messaging.
 
 ### QA Checkpoints
-- **[P0 Navigation Slice]** Confirm splash → auth → main tabs, ensure `MainScreen` preserves state, record issues.
-- **[P0 Dashboard Slice]** Validate refreshed home, savings, transactions cards; capture screenshots for before/after log.
-- **[P1 Onboarding Slice]** Walk through onboarding copy changes, verify skip, confirm analytics stub.
-- **[P1 Savings & Groups Slice]** Play through group list/detail and savings goal flows, note data inconsistencies.
+- **[P0 Alignment Slice]** Validate admin entities and KPIs against app mock data. Log discrepancies before updating UI.
+- **[P0 Dashboard Slice]** Smoke-test home/dashboard screens in both products, confirming responsive layouts and theme parity.
+- **[P1 Member Lifecycle Slice]** Walk through onboarding/KYC flows in-app and ensure admin tooling can observe and act on each state.
 - **[P2 Support Slice]** Review profile/help localization prep once content updates land.
 
-### 10. Wallet & Cashflow Journeys
+### 10. Wallet & Cashflow Journeys (App)
 - [x] **[P1] 10.1 DepositFlowPrototype**
   - [x] Build an interactive deposit flow (amount entry → channel selection → confirmation) that updates wallet balance and logs a transaction locally.
   - [x] Include a review step outlining fees and reference IDs to mirror regulatory requirements.

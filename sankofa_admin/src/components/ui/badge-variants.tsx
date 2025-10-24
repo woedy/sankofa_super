@@ -15,6 +15,8 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
     'Failed': 'bg-destructive/10 text-destructive border-destructive/20',
     'Rejected': 'bg-destructive/10 text-destructive border-destructive/20',
     'Suspended': 'bg-destructive/10 text-destructive border-destructive/20',
+    'Accepted': 'bg-success/10 text-success border-success/20',
+    'Declined': 'bg-destructive/10 text-destructive border-destructive/20',
     'Inactive': 'bg-muted text-muted-foreground border-border',
     'Open': 'bg-warning/10 text-warning border-warning/20',
     'In Review': 'bg-primary/10 text-primary border-primary/20',
