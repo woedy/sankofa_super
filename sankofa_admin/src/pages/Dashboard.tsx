@@ -2,39 +2,52 @@ import { Users, Wallet, TrendingUp, DollarSign } from 'lucide-react';
 import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import KPICard from '@/components/dashboard/KPICard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { dailyTransactionsData, userStatusData, mockNotifications } from '@/lib/mockData';
+import { dailyTransactionsData, userStatusData, mockNotifications, mockUsers, mockSusuGroups, mockTransactions } from '@/lib/mockData';
 import { StatusBadge } from '@/components/ui/badge-variants';
 import { Bell } from 'lucide-react';
 
 export default function Dashboard() {
+  const formatNumber = (value: number) => value.toLocaleString();
+  const formatCurrency = (value: number) =>
+    `GH₵ ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const totalUsers = mockUsers.length;
+  const activeGroups = mockSusuGroups.filter((group) => group.status !== 'Archived').length;
+  const totalDeposits = mockTransactions
+    .filter((transaction) => transaction.type === 'Deposit' && transaction.status !== 'Failed')
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const platformRevenue = mockTransactions
+    .filter((transaction) => transaction.status === 'Success')
+    .reduce((sum, transaction) => sum + (transaction.fee ?? 0), 0);
+
   return (
     <div className="space-y-6">
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <KPICard
           title="Total Users"
-          value="1,025"
-          change="+12% from last month"
+          value={formatNumber(totalUsers)}
+          change="16 enriched member records"
           trend="up"
           icon={Users}
         />
         <KPICard
           title="Active Susu Groups"
-          value="92"
-          change="+8 new groups"
+          value={formatNumber(activeGroups)}
+          change="Seed data synced with app groups"
           trend="up"
           icon={Wallet}
         />
         <KPICard
           title="Total Deposits"
-          value="GH₵ 425,680"
-          change="+15% from last month"
+          value={formatCurrency(totalDeposits)}
+          change="Successful & pending deposit volume"
           trend="up"
           icon={TrendingUp}
         />
         <KPICard
           title="Platform Revenue"
-          value="GH₵ 85,340"
-          change="+23% from last month"
+          value={formatCurrency(platformRevenue)}
+          change="Summed from transaction fees"
           trend="up"
           icon={DollarSign}
         />
