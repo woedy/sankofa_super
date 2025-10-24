@@ -12,6 +12,7 @@ import Transactions from "./pages/Transactions";
 import Analytics from "./pages/Analytics";
 import Disputes from "./pages/Disputes";
 import Settings from "./pages/Settings";
+import Cashflow from "./pages/Cashflow";
 import Sidebar from "./components/layout/Sidebar";
 import Header from "./components/layout/Header";
 import NotFound from "./pages/NotFound";
@@ -21,11 +22,11 @@ const queryClient = new QueryClient();
 // Layout component for authenticated pages
 function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen w-full bg-background">
+    <div className="flex h-screen w-full overflow-hidden bg-background">
       <Sidebar />
-      <div className="flex-1 flex flex-col">
+      <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
-        <main className="flex-1 p-6">
+        <main className="flex-1 overflow-y-auto p-6">
           {children}
         </main>
       </div>
@@ -76,7 +77,17 @@ const App = () => {
                 <Navigate to="/login" replace />
               )
             } />
-            
+
+            <Route path="/cashflow" element={
+              isAuthenticated ? (
+                <DashboardLayout>
+                  <Cashflow />
+                </DashboardLayout>
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            } />
+
             <Route path="/transactions" element={
               isAuthenticated ? (
                 <DashboardLayout>
