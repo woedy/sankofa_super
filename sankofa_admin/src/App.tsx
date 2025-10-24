@@ -12,6 +12,7 @@ import Transactions from "./pages/Transactions";
 import Analytics from "./pages/Analytics";
 import Disputes from "./pages/Disputes";
 import Settings from "./pages/Settings";
+import Cashflow from "./pages/Cashflow";
 import Sidebar from "./components/layout/Sidebar";
 import Header from "./components/layout/Header";
 import NotFound from "./pages/NotFound";
@@ -76,7 +77,17 @@ const App = () => {
                 <Navigate to="/login" replace />
               )
             } />
-            
+
+            <Route path="/cashflow" element={
+              isAuthenticated ? (
+                <DashboardLayout>
+                  <Cashflow />
+                </DashboardLayout>
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            } />
+
             <Route path="/transactions" element={
               isAuthenticated ? (
                 <DashboardLayout>
