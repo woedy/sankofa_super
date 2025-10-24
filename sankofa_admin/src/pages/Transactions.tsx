@@ -69,6 +69,8 @@ export default function Transactions() {
                 <SelectItem value="Deposit">Deposit</SelectItem>
                 <SelectItem value="Withdrawal">Withdrawal</SelectItem>
                 <SelectItem value="Contribution">Contribution</SelectItem>
+                <SelectItem value="Payout">Payout</SelectItem>
+                <SelectItem value="Savings">Savings</SelectItem>
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -105,18 +107,26 @@ export default function Transactions() {
                     <TableCell>{transaction.user}</TableCell>
                     <TableCell>
                       <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        transaction.type === 'Deposit' ? 'bg-success/10 text-success' :
-                        transaction.type === 'Withdrawal' ? 'bg-warning/10 text-warning' :
-                        'bg-primary/10 text-primary'
+                        transaction.type === 'Deposit'
+                          ? 'bg-success/10 text-success'
+                          : transaction.type === 'Withdrawal'
+                            ? 'bg-warning/10 text-warning'
+                            : transaction.type === 'Payout'
+                              ? 'bg-secondary/10 text-secondary'
+                              : transaction.type === 'Savings'
+                                ? 'bg-muted text-foreground'
+                                : 'bg-primary/10 text-primary'
                       }`}>
                         {transaction.type}
                       </span>
                     </TableCell>
                     <TableCell className="font-semibold">
                       <span className={
-                        transaction.type === 'Withdrawal' ? 'text-destructive' : 'text-success'
+                        transaction.type === 'Withdrawal' || transaction.type === 'Savings'
+                          ? 'text-destructive'
+                          : 'text-success'
                       }>
-                        {transaction.type === 'Withdrawal' ? '-' : '+'}GH₵ {transaction.amount.toFixed(2)}
+                        {transaction.type === 'Withdrawal' || transaction.type === 'Savings' ? '-' : '+'}GH₵ {transaction.amount.toFixed(2)}
                       </span>
                     </TableCell>
                     <TableCell>
