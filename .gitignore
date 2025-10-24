@@ -97,3 +97,25 @@ windows/build/
 # Linux (Flutter desktop)
 linux/flutter/ephemeral/
 linux/build/
+
+# Python (sankofa_backend)
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.pyc
+*.pyo
+*.pyd
+*.cover
+*.log
+*.pot
+*.py,cover
+*.pyc
+*.mo
+*.egg-info/
+*.egg
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+db.sqlite3
+.venv/
