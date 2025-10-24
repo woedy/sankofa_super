@@ -1,13 +1,14 @@
 import { NavLink } from 'react-router-dom';
 import { 
-  LayoutDashboard, 
-  Users, 
-  CircleDollarSign, 
-  Receipt, 
-  BarChart3, 
-  AlertTriangle, 
+  LayoutDashboard,
+  Users,
+  CircleDollarSign,
+  Receipt,
+  BarChart3,
+  AlertTriangle,
   Settings,
-  Wallet
+  Wallet,
+  Banknote,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -15,6 +16,7 @@ const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Users', href: '/users', icon: Users },
   { name: 'Susu Groups', href: '/groups', icon: Wallet },
+  { name: 'Cashflow Ops', href: '/cashflow', icon: Banknote },
   { name: 'Transactions', href: '/transactions', icon: Receipt },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Disputes', href: '/disputes', icon: AlertTriangle },
