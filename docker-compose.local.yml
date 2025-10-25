@@ -1,0 +1,128 @@
+version: "3.9"
+
+x-backend-env: &backend-env
+  DJANGO_SETTINGS_MODULE: core.settings.local
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-local-secret-key}
+  POSTGRES_DB: ${POSTGRES_DB:-sankofa}
+  POSTGRES_USER: ${POSTGRES_USER:-sankofa}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sankofa}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/1
+  PYTHONPATH: /app
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sankofa}
+      POSTGRES_USER: ${POSTGRES_USER:-sankofa}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sankofa}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sankofa}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: sankofa_backend/Dockerfile
+    command: python manage.py runserver 0.0.0.0:8000
+    working_dir: /app/sankofa_backend
+    volumes:
+      - ./sankofa_backend:/app/sankofa_backend
+    env_file:
+      - .env.local
+    environment:
+      <<: *backend-env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: sankofa_backend/Dockerfile
+    command: celery -A core worker -l info
+    working_dir: /app/sankofa_backend
+    volumes:
+      - ./sankofa_backend:/app/sankofa_backend
+    env_file:
+      - .env.local
+    environment:
+      <<: *backend-env
+    depends_on:
+      - postgres
+      - redis
+
+  celery_beat:
+    build:
+      context: .
+      dockerfile: sankofa_backend/Dockerfile
+    command: celery -A core beat -l info
+    working_dir: /app/sankofa_backend
+    volumes:
+      - ./sankofa_backend:/app/sankofa_backend
+    env_file:
+      - .env.local
+    environment:
+      <<: *backend-env
+    depends_on:
+      - postgres
+      - redis
+
+  admin_web:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    volumes:
+      - ./sankofa_admin:/app
+      - admin_node_modules:/app/node_modules
+    env_file:
+      - .env.local
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://backend:8000}
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+  web_app:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5174"
+    volumes:
+      - ./sankofa_frontend:/app
+      - frontend_node_modules:/app/node_modules
+    env_file:
+      - .env.local
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://backend:8000}
+    ports:
+      - "5174:5174"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
+  admin_node_modules:
+  frontend_node_modules:

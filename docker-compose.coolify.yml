@@ -1,0 +1,106 @@
+version: "3.9"
+
+x-backend-env: &backend-env
+  DJANGO_SETTINGS_MODULE: core.settings.production
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me}
+  POSTGRES_DB: ${POSTGRES_DB:-sankofa}
+  POSTGRES_USER: ${POSTGRES_USER:-sankofa}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sankofa}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+  CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+  PYTHONPATH: /app
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sankofa}
+      POSTGRES_USER: ${POSTGRES_USER:-sankofa}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sankofa}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: sankofa_backend/Dockerfile
+    command: daphne -b 0.0.0.0 -p 8000 core.asgi:application
+    working_dir: /app/sankofa_backend
+    env_file:
+      - .env.production
+    environment:
+      <<: *backend-env
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: sankofa_backend/Dockerfile
+    command: celery -A core worker -l info
+    working_dir: /app/sankofa_backend
+    env_file:
+      - .env.production
+    environment:
+      <<: *backend-env
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  celery_beat:
+    build:
+      context: .
+      dockerfile: sankofa_backend/Dockerfile
+    command: celery -A core beat -l info
+    working_dir: /app/sankofa_backend
+    env_file:
+      - .env.production
+    environment:
+      <<: *backend-env
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  admin_web:
+    build:
+      context: .
+      dockerfile: sankofa_admin/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://backend:8000}
+    ports:
+      - "4173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  web_app:
+    build:
+      context: .
+      dockerfile: sankofa_frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://backend:8000}
+    ports:
+      - "4174:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
