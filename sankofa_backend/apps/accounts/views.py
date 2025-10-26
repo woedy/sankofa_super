@@ -20,12 +20,19 @@ from .services import issue_phone_otp, submit_ghana_card_documents, validate_otp
 User = get_user_model()
 
 
-def _issue_tokens_for_user(user: User) -> dict:
+def _serialize_user(user: User, *, request=None) -> dict:
+    context = {}
+    if request is not None:
+        context["request"] = request
+    return UserSerializer(user, context=context).data
+
+
+def _issue_tokens_for_user(user: User, *, request=None) -> dict:
     refresh = RefreshToken.for_user(user)
     return {
         "refresh": str(refresh),
         "access": str(refresh.access_token),
-        "user": UserSerializer(user).data,
+        "user": _serialize_user(user, request=request),
     }
 
 
@@ -47,7 +54,7 @@ class RegistrationView(views.APIView):
         return response.Response(
             {
                 "message": "Registration successful. Verify the OTP sent to your phone to continue.",
-                "user": UserSerializer(user).data,
+                "user": _serialize_user(user, request=request),
             },
             status=status.HTTP_201_CREATED,
         )
@@ -119,7 +126,7 @@ class OTPVerifyView(views.APIView):
         if user is None:
             raise ValidationError({"detail": "Account setup is incomplete. Please register first."})
 
-        tokens = _issue_tokens_for_user(user)
+        tokens = _issue_tokens_for_user(user, request=request)
         return response.Response(tokens, status=status.HTTP_200_OK)
 
 
@@ -172,6 +179,6 @@ class GhanaCardUploadView(views.APIView):
 
         payload = {
             "message": "Your Ghana Card has been submitted for review.",
-            "user": UserSerializer(updated_user, context={"request": request}).data,
+            "user": _serialize_user(updated_user, request=request),
         }
         return response.Response(payload, status=status.HTTP_200_OK)

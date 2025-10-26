@@ -15,13 +15,12 @@ class UserSerializer(serializers.ModelSerializer):
     ghana_card_front_url = serializers.SerializerMethodField()
     ghana_card_back_url = serializers.SerializerMethodField()
     wallet_balance = serializers.DecimalField(
-        source="wallet_balance",
         max_digits=14,
         decimal_places=2,
         coerce_to_string=False,
         read_only=True,
     )
-    wallet_updated_at = serializers.DateTimeField(source="wallet_updated_at", allow_null=True, read_only=True)
+    wallet_updated_at = serializers.DateTimeField(allow_null=True, read_only=True)
 
     class Meta:
         model = UserModel

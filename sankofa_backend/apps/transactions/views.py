@@ -109,14 +109,14 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
             raise ValidationError(exc.message_dict) from exc
 
         payload = WalletOperationResponseSerializer(
-            data={
-                "transaction": TransactionSerializer(transaction, context={"request": request}).data,
-                "wallet": WalletSerializer(wallet, context={"request": request}).data,
-                "platformWallet": WalletSerializer(platform_wallet, context={"request": request}).data,
-            }
+            instance={
+                "transaction": transaction,
+                "wallet": wallet,
+                "platformWallet": platform_wallet,
+            },
+            context={"request": request},
         )
-        payload.is_valid(raise_exception=True)
-        return Response(payload.validated_data, status=status.HTTP_201_CREATED)
+        return Response(payload.data, status=status.HTTP_201_CREATED)
 
     @action(methods=["post"], detail=False)
     def withdraw(self, request):
@@ -132,14 +132,14 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
             raise ValidationError(exc.message_dict) from exc
 
         payload = WalletOperationResponseSerializer(
-            data={
-                "transaction": TransactionSerializer(transaction, context={"request": request}).data,
-                "wallet": WalletSerializer(wallet, context={"request": request}).data,
-                "platformWallet": WalletSerializer(platform_wallet, context={"request": request}).data,
-            }
+            instance={
+                "transaction": transaction,
+                "wallet": wallet,
+                "platformWallet": platform_wallet,
+            },
+            context={"request": request},
         )
-        payload.is_valid(raise_exception=True)
-        return Response(payload.validated_data, status=status.HTTP_201_CREATED)
+        return Response(payload.data, status=status.HTTP_201_CREATED)
 
 
 def _parse_query_datetime(value: str, *, is_end: bool) -> datetime | None:
