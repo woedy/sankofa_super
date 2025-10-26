@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:sankofasave/screens/kyc_screen.dart';
 import 'package:sankofasave/screens/main_screen.dart';
 import 'package:sankofasave/services/analytics_service.dart';
+import 'package:sankofasave/services/api_exception.dart';
+import 'package:sankofasave/services/auth_service.dart';
 import 'package:sankofasave/services/user_service.dart';
 import 'package:sankofasave/utils/route_transitions.dart';
 
@@ -41,12 +43,14 @@ class _LoginScreenState extends State<LoginScreen> {
   final _phoneController = TextEditingController();
   final _otpController = TextEditingController();
   final _phoneFormatter = GhanaPhoneNumberFormatter();
+  final AuthService _authService = AuthService();
   bool _otpSent = false;
   bool _isLoading = false;
   String? _phoneError;
   String? _otpError;
   int _secondsRemaining = 0;
   Timer? _countdownTimer;
+  String? _normalizedPhone;
 
   @override
   void initState() {
@@ -91,21 +95,49 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    final normalizedPhone = _authService.normalizePhone(phone);
     setState(() {
       _isLoading = true;
       _phoneError = null;
       _otpError = null;
     });
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() {
-      _isLoading = false;
-      _otpSent = true;
-    });
-    _startCountdown();
-    AnalyticsService().logEvent('login_otp_sent');
-    if (mounted) {
+
+    try {
+      await _authService.requestOtp(normalizedPhone, purpose: 'login');
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _otpSent = true;
+        _normalizedPhone = normalizedPhone;
+      });
+      _startCountdown();
+      AnalyticsService().logEvent('login_otp_sent');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('OTP sent successfully!')),
+        SnackBar(content: Text('We\'ve sent a code to ${normalizedPhone.replaceFirst('+233', '+233 ')}')),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      _countdownTimer?.cancel();
+      setState(() {
+        _isLoading = false;
+        _otpSent = false;
+        _phoneError = error.message;
+      });
+      AnalyticsService().logEvent('login_otp_request_failed', properties: {'reason': error.message});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _countdownTimer?.cancel();
+      setState(() {
+        _isLoading = false;
+        _otpSent = false;
+        _phoneError = 'We could not send the code. Please try again.';
+      });
+      AnalyticsService().logEvent('login_otp_request_failed', properties: {'reason': error.toString()});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('We could not send the code. Please try again.')),
       );
     }
   }
@@ -117,33 +149,60 @@ class _LoginScreenState extends State<LoginScreen> {
       AnalyticsService().logEvent('login_otp_invalid_length');
       return;
     }
-    if (otp != '123456') {
-      setState(() => _otpError = 'That code didn\'t match. Try again.');
-      AnalyticsService().logEvent('login_otp_invalid');
-      return;
-    }
+
+    final normalizedPhone = _normalizedPhone ?? _authService.normalizePhone(_phoneController.text);
 
     setState(() {
       _otpError = null;
       _isLoading = true;
     });
-    await Future.delayed(const Duration(seconds: 1));
 
-    final user = await UserService().getCurrentUser();
-    final requiresKyc = (user?.kycStatus ?? 'pending') != 'verified';
-    AnalyticsService().logEvent('login_verified', properties: {
-      'next_screen': requiresKyc ? 'kyc' : 'main',
-    });
+    try {
+      final authenticatedUser = await _authService.verifyOtp(
+        phoneNumber: normalizedPhone,
+        code: otp,
+      );
+      final userService = UserService();
+      final refreshed = await userService.refreshCurrentUser();
+      final user = refreshed ?? authenticatedUser;
+      final requiresKyc = user.kycStatus != 'verified';
 
-    if (!mounted) return;
+      AnalyticsService().logEvent('login_verified', properties: {
+        'next_screen': requiresKyc ? 'kyc' : 'main',
+      });
 
-    _countdownTimer?.cancel();
-    setState(() => _isLoading = false);
-    Navigator.of(context).pushReplacement(
-      requiresKyc
-          ? RouteTransitions.slideLeft(const KYCScreen())
-          : RouteTransitions.slideLeft(const MainScreen()),
-    );
+      if (!mounted) return;
+
+      _countdownTimer?.cancel();
+      setState(() => _isLoading = false);
+      Navigator.of(context).pushReplacement(
+        requiresKyc
+            ? RouteTransitions.slideLeft(const KYCScreen())
+            : RouteTransitions.slideLeft(const MainScreen()),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      _countdownTimer?.cancel();
+      setState(() {
+        _isLoading = false;
+        _otpError = error.message;
+      });
+      AnalyticsService().logEvent('login_otp_invalid', properties: {'reason': error.message});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _countdownTimer?.cancel();
+      setState(() {
+        _isLoading = false;
+        _otpError = 'Something went wrong. Please try again.';
+      });
+      AnalyticsService().logEvent('login_otp_invalid', properties: {'reason': error.toString()});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('We could not verify the code. Please try again.')),
+      );
+    }
   }
 
   @override
