@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
@@ -11,6 +12,9 @@ UserModel = get_user_model()
 
 
 class UserSerializer(serializers.ModelSerializer):
+    ghana_card_front_url = serializers.SerializerMethodField()
+    ghana_card_back_url = serializers.SerializerMethodField()
+
     class Meta:
         model = UserModel
         fields = (
@@ -19,10 +23,29 @@ class UserSerializer(serializers.ModelSerializer):
             "full_name",
             "email",
             "kyc_status",
+            "kyc_submitted_at",
+            "ghana_card_front_url",
+            "ghana_card_back_url",
             "date_joined",
             "updated_at",
         )
         read_only_fields = fields
+
+    def get_ghana_card_front_url(self, obj: UserModel) -> str | None:
+        if not obj.ghana_card_front:
+            return None
+        return self._build_absolute(obj.ghana_card_front.url)
+
+    def get_ghana_card_back_url(self, obj: UserModel) -> str | None:
+        if not obj.ghana_card_back:
+            return None
+        return self._build_absolute(obj.ghana_card_back.url)
+
+    def _build_absolute(self, url: str) -> str:
+        request = self.context.get("request") if isinstance(self.context, dict) else None
+        if request is not None:
+            return request.build_absolute_uri(url)
+        return url
 
 
 class RegistrationSerializer(serializers.ModelSerializer):
@@ -102,3 +125,24 @@ class PasswordResetRequestSerializer(serializers.Serializer):
         if not UserModel.objects.filter(phone_number=normalized, is_active=True).exists():
             raise serializers.ValidationError("No account is registered with this phone number.")
         return normalized
+
+
+class GhanaCardUploadSerializer(serializers.Serializer):
+    front_image = serializers.ImageField()
+    back_image = serializers.ImageField()
+
+    default_error_messages = {
+        "image_size": _("Images must be %(size)sMB or smaller."),
+    }
+
+    def validate_front_image(self, value):
+        return self._validate_image(value)
+
+    def validate_back_image(self, value):
+        return self._validate_image(value)
+
+    def _validate_image(self, value):
+        max_bytes = settings.IDENTIFICATION_MAX_IMAGE_MB * 1024 * 1024
+        if value.size > max_bytes:
+            self.fail("image_size", size=settings.IDENTIFICATION_MAX_IMAGE_MB)
+        return value

@@ -9,6 +9,8 @@ from django.core.validators import RegexValidator
 from django.db import models
 from django.utils import timezone
 
+from ..common.storage import get_identification_storage
+
 
 def get_default_kyc_status() -> str:
     from django.conf import settings  # local import to avoid settings at import time
@@ -71,6 +73,9 @@ class UserManager(BaseUserManager):
         return f"+{digits_only}"
 
 
+identification_storage = get_identification_storage()
+
+
 class User(AbstractBaseUser, PermissionsMixin):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     phone_number = models.CharField(
@@ -90,6 +95,21 @@ class User(AbstractBaseUser, PermissionsMixin):
         default=get_default_kyc_status,
         help_text="Current Know Your Customer verification status.",
     )
+    ghana_card_front = models.ImageField(
+        storage=identification_storage,
+        upload_to="",
+        blank=True,
+        null=True,
+        help_text="Optimized scan of the front of the Ghana Card.",
+    )
+    ghana_card_back = models.ImageField(
+        storage=identification_storage,
+        upload_to="",
+        blank=True,
+        null=True,
+        help_text="Optimized scan of the back of the Ghana Card.",
+    )
+    kyc_submitted_at = models.DateTimeField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(auto_now_add=True)

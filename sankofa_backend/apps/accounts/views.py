@@ -1,19 +1,20 @@
 from __future__ import annotations
 
 from django.contrib.auth import get_user_model
-from rest_framework import permissions, response, status, views
+from rest_framework import parsers, permissions, response, status, views
 from rest_framework.exceptions import ValidationError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import PhoneOTP
 from .serializers import (
+    GhanaCardUploadSerializer,
     OTPRequestSerializer,
     OTPVerifySerializer,
     PasswordResetRequestSerializer,
     RegistrationSerializer,
     UserSerializer,
 )
-from .services import issue_phone_otp, validate_otp
+from .services import issue_phone_otp, submit_ghana_card_documents, validate_otp
 
 
 User = get_user_model()
@@ -36,7 +37,12 @@ class RegistrationView(views.APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
 
-        issue_phone_otp(phone_number=user.phone_number, purpose=PhoneOTP.PURPOSE_SIGNUP)
+        issue_phone_otp(
+            phone_number=user.phone_number,
+            purpose=PhoneOTP.PURPOSE_SIGNUP,
+            email=user.email,
+            full_name=user.full_name,
+        )
 
         return response.Response(
             {
@@ -57,7 +63,16 @@ class OTPRequestView(views.APIView):
         phone_number = serializer.validated_data["phone_number"]
         purpose = serializer.validated_data["purpose"]
 
-        otp = issue_phone_otp(phone_number=phone_number, purpose=purpose)
+        user = None
+        if purpose != PhoneOTP.PURPOSE_SIGNUP:
+            user = User.objects.filter(phone_number=phone_number).first()
+
+        otp = issue_phone_otp(
+            phone_number=phone_number,
+            purpose=purpose,
+            email=getattr(user, "email", None),
+            full_name=getattr(user, "full_name", None),
+        )
 
         payload = {
             "message": "A verification code has been sent to your phone.",
@@ -115,9 +130,14 @@ class PasswordResetRequestView(views.APIView):
         serializer = PasswordResetRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        phone_number = serializer.validated_data["phone_number"]
+        user = User.objects.filter(phone_number=phone_number).first()
+
         otp = issue_phone_otp(
-            phone_number=serializer.validated_data["phone_number"],
+            phone_number=phone_number,
             purpose=PhoneOTP.PURPOSE_PASSWORD_RESET,
+            email=getattr(user, "email", None),
+            full_name=getattr(user, "full_name", None),
         )
 
         return response.Response(
@@ -133,4 +153,25 @@ class CurrentUserView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
-        return response.Response(UserSerializer(request.user).data)
+        return response.Response(UserSerializer(request.user, context={"request": request}).data)
+
+
+class GhanaCardUploadView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = (parsers.MultiPartParser, parsers.FormParser)
+
+    def post(self, request, *args, **kwargs):
+        serializer = GhanaCardUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        updated_user = submit_ghana_card_documents(
+            user=request.user,
+            front_image=serializer.validated_data["front_image"],
+            back_image=serializer.validated_data["back_image"],
+        )
+
+        payload = {
+            "message": "Your Ghana Card has been submitted for review.",
+            "user": UserSerializer(updated_user, context={"request": request}).data,
+        }
+        return response.Response(payload, status=status.HTTP_200_OK)
