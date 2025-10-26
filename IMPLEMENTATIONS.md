@@ -93,6 +93,27 @@ This checklist captures the prioritized backlog for bringing the Sankofa backend
     - Ensure authentication flows store and refresh JWTs correctly.
     - All mocked data replaced with API-driven state.
     - Manual QA checklist documented (screenshots, key flows) and automated integration tests added where feasible.
+  - **Current Status:**
+    - ✅ Flutter login now requests and verifies OTPs against `/api/auth/otp/request/` and `/api/auth/otp/verify/`, persists JWTs, and refreshes access tokens via `/api/auth/token/refresh/`.
+    - ✅ Groups, savings, and transactions screens now hydrate from the live Django APIs (with local drafts cached only for client-side workflows such as group creation and manual deposits).
+    - ⚠️ Group invite management and savings goal automation still rely on local mocks until the corresponding backend endpoints exist.
+  - **Verification Steps:**
+    1. Ensure the Django backend is running locally (`python sankofa_backend/manage.py runserver`) or via Docker at `http://localhost:8000`.
+       - Browser-based clients (Flutter web, React apps) now receive permissive CORS headers in debug mode. For non-local origins set `DJANGO_CORS_ALLOWED_ORIGINS="https://example.com,https://app.example.com"` before starting the server so those hosts are explicitly allowed.
+       - OTP and verification emails are stored as text files under `sankofa_backend/sent_emails/`; inspect the newest file after triggering a request to confirm delivery content.
+    2. Launch the Flutter app. The client now auto-selects a sensible local base URL (`http://10.0.2.2:8000` on Android emulators, `http://localhost:8000` on iOS simulators/macOS, `http://127.0.0.1:8000` on Windows/Linux, and `http://localhost:8000` on Flutter web). Override as needed for physical devices by supplying a reachable host with:
+       ```bash
+       flutter run \
+         --dart-define=SANKOFA_ENV=local \
+         --dart-define=API_BASE_URL=http://<your-local-ip>:8000
+       ```
+    3. From the login screen:
+       - Existing testers can enter a registered phone number, request an OTP, and verify the SMS/console code to reach the dashboard (or KYC screen for pending profiles).
+       - New testers can tap **Create an account**, complete the registration form, and verify the signup OTP. Successful verification should land on the KYC checklist first, then the main experience once completed.
+    4. Close and relaunch the app. The splash screen should detect the persisted refresh token, silently refresh the access token, and route back to the authenticated experience without re-entering the OTP.
+    5. From the Groups tab, verify the list matches `/api/groups/` data and that joining a public circle updates membership counts after refreshing.
+    6. From the Savings tab, confirm goals mirror `/api/savings/goals/`, then boost a goal and observe the balance update after a successful API response (milestone notifications should appear when thresholds are crossed).
+    7. From the Transactions tab, confirm history matches `/api/transactions/` (server data appears first, followed by any locally simulated deposits/withdrawals).
 
 ---
 

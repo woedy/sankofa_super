@@ -20,6 +20,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "corsheaders",
     "channels",
     "rest_framework",
     "rest_framework_simplejwt",
@@ -33,6 +34,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -145,6 +147,24 @@ REST_FRAMEWORK = {
     ],
 }
 
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("DJANGO_CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
+if CORS_ALLOWED_ORIGINS:
+    CORS_ALLOW_ALL_ORIGINS = False
+else:
+    CORS_ALLOW_ALL_ORIGINS = DEBUG
+    CORS_ALLOWED_ORIGIN_REGEXES = [
+        r"^https?://localhost(:\d+)?$",
+        r"^https?://127\.0\.0\.1(:\d+)?$",
+        r"^https?://0\.0\.0\.0(:\d+)?$",
+    ]
+
+CORS_ALLOW_CREDENTIALS = True
+
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(os.environ.get("AUTH_ACCESS_TOKEN_MINUTES", 30))),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=int(os.environ.get("AUTH_REFRESH_TOKEN_DAYS", 7))),
@@ -153,3 +173,14 @@ SIMPLE_JWT = {
 }
 
 DEFAULT_KYC_STATUS = os.environ.get("DEFAULT_KYC_STATUS", "pending")
+
+EMAIL_BACKEND = os.environ.get(
+    "DJANGO_EMAIL_BACKEND",
+    "django.core.mail.backends.filebased.EmailBackend",
+)
+_email_file_path = Path(
+    os.environ.get("DJANGO_EMAIL_FILE_PATH", BASE_DIR / "sent_emails")
+)
+if EMAIL_BACKEND.endswith("filebased.EmailBackend"):
+    _email_file_path.mkdir(parents=True, exist_ok=True)
+    EMAIL_FILE_PATH = str(_email_file_path)
