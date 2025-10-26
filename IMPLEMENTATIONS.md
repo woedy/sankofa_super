@@ -87,12 +87,44 @@ This checklist captures the prioritized backlog for bringing the Sankofa backend
 
 ## Phase 2 — Mobile Client Integration
 
-- [ ] **Story:** As the product team, we want the Flutter app wired to live APIs so we can validate the full experience.
+- [x] **Story:** As the product team, we want the Flutter app wired to live APIs so we can validate the full experience.
   - **Acceptance Criteria:**
     - Update Flutter networking layer to hit the Django endpoints with environment-aware base URLs.
     - Ensure authentication flows store and refresh JWTs correctly.
     - All mocked data replaced with API-driven state.
     - Manual QA checklist documented (screenshots, key flows) and automated integration tests added where feasible.
+  - **Current Status:**
+    - ✅ Flutter login now requests and verifies OTPs against `/api/auth/otp/request/` and `/api/auth/otp/verify/`, persists JWTs, and refreshes access tokens via `/api/auth/token/refresh/`.
+    - ✅ Groups, savings, and transactions screens now hydrate from the live Django APIs (with local drafts cached only for client-side workflows such as group creation and manual deposits).
+    - ✅ Private group creation, invite reminders, acceptance tracking, and roster promotions now call live Django endpoints so admins and invitees stay in sync across devices.
+  - **Verification Steps:**
+    1. Ensure the Django backend is running locally (`python sankofa_backend/manage.py runserver`) or via Docker at `http://localhost:8000`.
+       - Browser-based clients (Flutter web, React apps) now receive permissive CORS headers in debug mode. For non-local origins set `DJANGO_CORS_ALLOWED_ORIGINS="https://example.com,https://app.example.com"` before starting the server so those hosts are explicitly allowed.
+       - When running the backend outside Docker or executing tests without Redis, set `DJANGO_CHANNEL_LAYER=memory` to switch Channels to the in-memory layer.
+       - Each registration, login, or password-reset OTP now produces a text file under `sankofa_backend/sent_emails/`; inspect the newest file after triggering a request to confirm delivery content.
+    2. Launch the Flutter app. The client now auto-selects a sensible local base URL (`http://10.0.2.2:8000` on Android emulators, `http://localhost:8000` on iOS simulators/macOS, `http://127.0.0.1:8000` on Windows/Linux, and `http://localhost:8000` on Flutter web). Override as needed for physical devices by supplying a reachable host with:
+       ```bash
+       flutter run \
+         --dart-define=SANKOFA_ENV=local \
+         --dart-define=API_BASE_URL=http://<your-local-ip>:8000
+       ```
+    3. From the login screen:
+       - Existing testers can enter a registered phone number, request an OTP, and verify the SMS/console code to reach the dashboard (or KYC screen for pending profiles).
+       - New testers can tap **Create an account**, complete the registration form, and verify the signup OTP. Successful verification should land on the KYC checklist first, then the main experience once completed.
+    4. Close and relaunch the app. The splash screen should detect the persisted refresh token, silently refresh the access token, and route back to the authenticated experience without re-entering the OTP.
+    5. From the Groups tab, verify the list matches `/api/groups/` data and that joining a public circle updates membership counts after refreshing.
+    6. From the Savings tab, confirm goals mirror `/api/savings/goals/`, then boost a goal and observe the balance update after a successful API response (milestone notifications should appear when thresholds are crossed).
+    7. From the Transactions tab, confirm history matches `/api/transactions/` (server data appears first, followed by any locally simulated deposits/withdrawals).
+    8. Launch the private group creation wizard, add at least two invitees, and confirm submission creates the circle on the backend (check `/admin/groups/group/`).
+       - From the group detail screen, send a reminder to an invitee and confirm the timestamp increments in the Django admin.
+       - Tap **Mark as joined** on an invite to promote them into the roster and verify a corresponding membership appears server-side.
+    9. Complete the KYC flow:
+       - After signup or from the Profile banner, proceed to the Ghana Card capture steps.
+       - Capture both sides using the guided camera flow (or upload existing photos). Retake if the preview looks cropped or blurry.
+       - Submit the documents and confirm a success toast appears before landing on the dashboard.
+       - On the backend (`sankofa_backend/media/identification_cards/`), verify that two optimised JPEGs are saved inside a per-user folder and that `User.kyc_status` updates to `submitted` with a `kyc_submitted_at` timestamp.
+       - The admin at `/admin/accounts/user/<id>/` should now display read-only links to both images for manual review.
+    10. After pulling these changes, run `flutter pub get` within `sankofa_app/` so the new `image_picker` plugin is available before compiling the mobile or web client.
 
 ---
 

@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:sankofasave/screens/kyc_screen.dart';
+import 'package:sankofasave/screens/login_screen.dart';
+import 'package:sankofasave/screens/main_screen.dart';
 import 'package:sankofasave/screens/onboarding_screen.dart';
 import 'package:sankofasave/services/analytics_service.dart';
+import 'package:sankofasave/services/auth_service.dart';
+import 'package:sankofasave/services/onboarding_service.dart';
+import 'package:sankofasave/services/user_service.dart';
 import 'package:sankofasave/utils/route_transitions.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -26,20 +32,43 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     );
     _controller.forward();
     AnalyticsService().logEvent('splash_shown');
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        AnalyticsService().logEvent('splash_completed');
-        Navigator.of(context).pushReplacement(
-          RouteTransitions.fade(const OnboardingScreen()),
-        );
-      }
-    });
+    _determineNextStep();
   }
 
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _determineNextStep() async {
+    await Future.delayed(const Duration(milliseconds: 900));
+
+    final onboardingService = OnboardingService();
+    final authService = AuthService();
+    final hasSession = await authService.hasActiveSession();
+    final onboardingCompleted = await onboardingService.isCompleted();
+
+    Widget destination;
+    String label;
+
+    if (hasSession) {
+      final user = await UserService().getCurrentUser();
+      final requiresKyc = (user?.kycStatus ?? 'pending') != 'verified';
+      destination = requiresKyc ? const KYCScreen() : const MainScreen();
+      label = requiresKyc ? 'kyc' : 'main';
+    } else if (onboardingCompleted) {
+      destination = const LoginScreen();
+      label = 'login';
+    } else {
+      destination = const OnboardingScreen();
+      label = 'onboarding';
+    }
+
+    if (!mounted) return;
+
+    AnalyticsService().logEvent('splash_completed', properties: {'next': label});
+    Navigator.of(context).pushReplacement(RouteTransitions.fade(destination));
   }
 
   @override

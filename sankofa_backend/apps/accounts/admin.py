@@ -9,11 +9,30 @@ from .models import PhoneOTP, User
 @admin.register(User)
 class UserAdmin(DjangoUserAdmin):
     ordering = ("phone_number",)
-    list_display = ("phone_number", "full_name", "email", "kyc_status", "is_active")
+    list_display = (
+        "phone_number",
+        "full_name",
+        "email",
+        "kyc_status",
+        "kyc_submitted_at",
+        "is_active",
+    )
     search_fields = ("phone_number", "full_name", "email")
     fieldsets = (
         (None, {"fields": ("phone_number", "password")}),
-        ("Personal info", {"fields": ("full_name", "email", "kyc_status")}),
+        (
+            "Personal info",
+            {
+                "fields": (
+                    "full_name",
+                    "email",
+                    "kyc_status",
+                    "kyc_submitted_at",
+                    "ghana_card_front",
+                    "ghana_card_back",
+                )
+            },
+        ),
         (
             "Permissions",
             {
@@ -27,6 +46,13 @@ class UserAdmin(DjangoUserAdmin):
             },
         ),
         ("Important dates", {"fields": ("last_login", "date_joined")}),
+    )
+    readonly_fields = (
+        "last_login",
+        "date_joined",
+        "ghana_card_front",
+        "ghana_card_back",
+        "kyc_submitted_at",
     )
     add_fieldsets = (
         (
