@@ -252,18 +252,14 @@ class _GroupCreationWizardScreenState
     if (_isSaving) return;
     await _persistDraft();
     final draft = _draft;
-    final owner = _currentUser;
-    if (draft == null || owner == null) {
+    if (draft == null) {
       _showMessage('Something went wrong while loading your account.');
       return;
     }
 
     setState(() => _isSaving = true);
     try {
-      final created = await _groupService.createGroupFromDraft(
-        draft,
-        owner: owner,
-      );
+      final created = await _groupService.createGroupFromDraft(draft);
       if (!mounted) return;
       Navigator.of(context).pop<SusuGroupModel>(created);
     } catch (error) {

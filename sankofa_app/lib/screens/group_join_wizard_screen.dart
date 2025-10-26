@@ -136,7 +136,6 @@ class _GroupJoinWizardScreenState extends State<GroupJoinWizardScreen> {
     try {
       final updatedGroup = await _groupService.joinPublicGroup(
         groupId: group.id,
-        user: user,
         introduction: _introductionController.text.trim().isEmpty
             ? null
             : _introductionController.text.trim(),
