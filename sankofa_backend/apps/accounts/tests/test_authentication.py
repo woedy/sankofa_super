@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.core import mail
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from rest_framework.test import APIClient
 
@@ -31,6 +32,19 @@ class AuthenticationFlowTests(TestCase):
         user = User.objects.get(phone_number="+233241234567")
         otp = PhoneOTP.objects.filter(phone_number=user.phone_number, purpose=PhoneOTP.PURPOSE_SIGNUP).first()
         self.assertIsNotNone(otp)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_registration_sends_signup_email(self):
+        self._request(
+            reverse("accounts:register"),
+            {"phone_number": "0241234567", "full_name": "Akosua Mensah", "email": "akosua@example.com"},
+        )
+
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertIn("Sankofa", message.subject)
+        self.assertIn("Akosua", message.body)
+        self.assertIn("verification code", message.body.lower())
 
     def test_login_otp_flow_returns_tokens(self):
         user = User.objects.create_user(phone_number="0241234567", full_name="Kwame")
@@ -100,3 +114,21 @@ class AuthenticationFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("detail", response.json())
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_login_request_sends_email_when_available(self):
+        user = User.objects.create_user(
+            phone_number="0241234567",
+            full_name="Kwame Mensah",
+            email="kwame@example.com",
+        )
+
+        self._request(
+            reverse("accounts:otp-request"),
+            {"phone_number": user.phone_number, "purpose": PhoneOTP.PURPOSE_LOGIN},
+        )
+
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertIn("login", message.subject.lower())
+        self.assertIn("Kwame", message.body)

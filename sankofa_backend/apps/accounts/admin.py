@@ -28,6 +28,7 @@ class UserAdmin(DjangoUserAdmin):
         ),
         ("Important dates", {"fields": ("last_login", "date_joined")}),
     )
+    readonly_fields = ("last_login", "date_joined")
     add_fieldsets = (
         (
             None,

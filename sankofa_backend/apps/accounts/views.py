@@ -36,7 +36,12 @@ class RegistrationView(views.APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
 
-        issue_phone_otp(phone_number=user.phone_number, purpose=PhoneOTP.PURPOSE_SIGNUP)
+        issue_phone_otp(
+            phone_number=user.phone_number,
+            purpose=PhoneOTP.PURPOSE_SIGNUP,
+            email=user.email,
+            full_name=user.full_name,
+        )
 
         return response.Response(
             {
@@ -57,7 +62,16 @@ class OTPRequestView(views.APIView):
         phone_number = serializer.validated_data["phone_number"]
         purpose = serializer.validated_data["purpose"]
 
-        otp = issue_phone_otp(phone_number=phone_number, purpose=purpose)
+        user = None
+        if purpose != PhoneOTP.PURPOSE_SIGNUP:
+            user = User.objects.filter(phone_number=phone_number).first()
+
+        otp = issue_phone_otp(
+            phone_number=phone_number,
+            purpose=purpose,
+            email=getattr(user, "email", None),
+            full_name=getattr(user, "full_name", None),
+        )
 
         payload = {
             "message": "A verification code has been sent to your phone.",
@@ -115,9 +129,14 @@ class PasswordResetRequestView(views.APIView):
         serializer = PasswordResetRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        phone_number = serializer.validated_data["phone_number"]
+        user = User.objects.filter(phone_number=phone_number).first()
+
         otp = issue_phone_otp(
-            phone_number=serializer.validated_data["phone_number"],
+            phone_number=phone_number,
             purpose=PhoneOTP.PURPOSE_PASSWORD_RESET,
+            email=getattr(user, "email", None),
+            full_name=getattr(user, "full_name", None),
         )
 
         return response.Response(
