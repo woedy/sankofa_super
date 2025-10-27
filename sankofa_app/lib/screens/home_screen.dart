@@ -176,7 +176,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final isVerified = user?.kycStatus == 'verified';
     final updatedLabel = user == null
         ? '—'
-        : DateFormat('MMM d • h:mm a').format(user.updatedAt);
+        : DateFormat('MMM d • h:mm a')
+            .format(user.walletUpdatedAt ?? user.updatedAt);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),

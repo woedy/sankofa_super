@@ -36,16 +36,29 @@ class SavingsGoalModel {
   };
 
   factory SavingsGoalModel.fromJson(Map<String, dynamic> json) => SavingsGoalModel(
-    id: json['id'] as String,
-    userId: json['userId'] as String,
-    title: json['title'] as String,
-    targetAmount: (json['targetAmount'] as num).toDouble(),
-    currentAmount: (json['currentAmount'] as num).toDouble(),
-    deadline: DateTime.parse(json['deadline'] as String),
-    category: json['category'] as String,
-    createdAt: DateTime.parse(json['createdAt'] as String),
-    updatedAt: DateTime.parse(json['updatedAt'] as String),
-  );
+        id: json['id']?.toString() ?? '',
+        userId: json['userId']?.toString() ?? '',
+        title: json['title'] as String,
+        targetAmount: _parseDouble(json['targetAmount']),
+        currentAmount: _parseDouble(json['currentAmount']),
+        deadline: DateTime.parse(json['deadline'] as String),
+        category: json['category'] as String,
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        updatedAt: DateTime.parse(json['updatedAt'] as String),
+      );
+
+  factory SavingsGoalModel.fromApi(Map<String, dynamic> json) =>
+      SavingsGoalModel.fromJson(json);
+
+  static double _parseDouble(dynamic value) {
+    if (value is num) {
+      return value.toDouble();
+    }
+    if (value is String) {
+      return double.tryParse(value) ?? 0;
+    }
+    return 0;
+  }
 
   SavingsGoalModel copyWith({
     String? id,

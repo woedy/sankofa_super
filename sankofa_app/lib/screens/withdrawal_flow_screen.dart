@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:sankofasave/models/notification_model.dart';
-import 'package:sankofasave/models/transaction_model.dart';
 import 'package:sankofasave/models/user_model.dart';
+import 'package:sankofasave/services/api_exception.dart';
 import 'package:sankofasave/services/notification_service.dart';
-import 'package:sankofasave/services/transaction_service.dart';
 import 'package:sankofasave/services/user_service.dart';
+import 'package:sankofasave/services/wallet_service.dart';
 import 'package:sankofasave/ui/components/ui.dart';
 import 'package:sankofasave/screens/transaction_receipt_modal.dart';
 
@@ -23,8 +23,8 @@ class WithdrawalFlowScreen extends StatefulWidget {
 
 class _WithdrawalFlowScreenState extends State<WithdrawalFlowScreen> {
   final UserService _userService = UserService();
-  final TransactionService _transactionService = TransactionService();
   final NotificationService _notificationService = NotificationService();
+  final WalletService _walletService = WalletService();
 
   final GlobalKey<FormState> _amountFormKey = GlobalKey<FormState>();
   final TextEditingController _amountController = TextEditingController();
@@ -281,86 +281,103 @@ class _WithdrawalFlowScreenState extends State<WithdrawalFlowScreen> {
       descriptionBuffer.write(' (failed)');
     }
 
-    final transaction = TransactionModel(
-      id: reference,
-      userId: user.id,
-      amount: amount,
-      type: 'withdrawal',
-      status: statusCode,
-      description: descriptionBuffer.toString(),
-      date: now,
-      createdAt: now,
-      updatedAt: now,
-      channel: destination.channelLabel,
-      fee: fee,
-      reference: reference,
-      counterparty: _resolveCounterparty(destination),
-    );
+    try {
+      final result = await _walletService.withdraw(
+        amount: amount,
+        status: statusCode,
+        channel: destination.channelLabel,
+        reference: reference,
+        fee: fee > 0 ? fee : null,
+        description: descriptionBuffer.toString(),
+        counterparty: _resolveCounterparty(destination),
+        destination: destination.name,
+        note: note.isNotEmpty ? note : null,
+      );
 
-    await _transactionService.addTransaction(transaction);
+      final transaction = result.transaction;
+      final resolvedStatus = switch (transaction.status) {
+        'success' => WithdrawalSubmissionStatus.success,
+        'failed' => WithdrawalSubmissionStatus.failed,
+        _ => WithdrawalSubmissionStatus.pending,
+      };
 
-    double? updatedBalance;
-    if (status == WithdrawalSubmissionStatus.success) {
-      final newBalance =
-          (user.walletBalance - amount).clamp(0.0, double.infinity).toDouble();
-      updatedBalance = newBalance;
-      await _userService.updateWalletBalance(newBalance);
-    }
+      final updatedBalance = result.walletBalance;
+      final recordedFee = transaction.fee ?? fee;
 
-    final notificationTitle = switch (status) {
-      WithdrawalSubmissionStatus.success => 'Withdrawal submitted',
-      WithdrawalSubmissionStatus.pending => 'Withdrawal pending review',
-      WithdrawalSubmissionStatus.failed => 'Withdrawal could not complete',
-    };
+      await _userService.updateWalletBalance(
+        updatedBalance,
+        walletUpdatedAt: result.walletUpdatedAt,
+      );
 
-    final notificationMessage = switch (status) {
-      WithdrawalSubmissionStatus.success =>
-          '${_formatCurrency(amount)} will hit ${destination.name} shortly.',
-      WithdrawalSubmissionStatus.pending =>
-          'We are reviewing your ${_formatCurrency(amount)} withdrawal to ${destination.name}.',
-      WithdrawalSubmissionStatus.failed =>
-          'Your ${_formatCurrency(amount)} withdrawal to ${destination.name} needs additional information.',
-    };
+      final notificationTitle = switch (resolvedStatus) {
+        WithdrawalSubmissionStatus.success => 'Withdrawal submitted',
+        WithdrawalSubmissionStatus.pending => 'Withdrawal pending review',
+        WithdrawalSubmissionStatus.failed => 'Withdrawal could not complete',
+      };
 
-    await _notificationService.addNotification(
-      NotificationModel(
-        id: 'notif_${now.millisecondsSinceEpoch}',
-        userId: user.id,
-        title: notificationTitle,
-        message: notificationMessage,
-        type: 'wallet',
-        isRead: false,
-        date: now,
-        createdAt: now,
-        updatedAt: now,
-      ),
-    );
+      final notificationMessage = switch (resolvedStatus) {
+        WithdrawalSubmissionStatus.success =>
+            '${_formatCurrency(transaction.amount)} will hit ${destination.name} shortly.',
+        WithdrawalSubmissionStatus.pending =>
+            'We are reviewing your ${_formatCurrency(transaction.amount)} withdrawal to ${destination.name}.',
+        WithdrawalSubmissionStatus.failed =>
+            'Your ${_formatCurrency(transaction.amount)} withdrawal to ${destination.name} needs additional information.',
+      };
 
-    if (!mounted) return;
+      await _notificationService.addNotification(
+        NotificationModel(
+          id: 'notif_${now.millisecondsSinceEpoch}',
+          userId: user.id,
+          title: notificationTitle,
+          message: notificationMessage,
+          type: 'wallet',
+          isRead: false,
+          date: now,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
 
-    setState(() {
-      _reviewReference = reference;
-      _isSubmitting = false;
-      if (updatedBalance != null) {
-        _user = user.copyWith(walletBalance: updatedBalance, updatedAt: now);
-      }
-    });
-
-    final shouldShowReceipt = await _showOutcomeSheet(
-      status: status,
-      amount: amount,
-      fee: fee,
-      reference: reference,
-      destination: destination,
-      updatedBalance: updatedBalance,
-    );
-
-    if (!mounted) return;
-    if (shouldShowReceipt) {
-      await showTransactionReceiptModal(context, transaction);
       if (!mounted) return;
+
+      setState(() {
+        _reviewReference = transaction.reference ?? reference;
+        _isSubmitting = false;
+        _user = user.copyWith(
+          walletBalance: updatedBalance,
+          walletUpdatedAt: result.walletUpdatedAt,
+          updatedAt: DateTime.now(),
+        );
+      });
+
+      final shouldShowReceipt = await _showOutcomeSheet(
+        status: resolvedStatus,
+        amount: transaction.amount,
+        fee: recordedFee,
+        reference: transaction.reference ?? reference,
+        destination: destination,
+        updatedBalance: updatedBalance,
+      );
+
+      if (!mounted) return;
+      if (shouldShowReceipt) {
+        await showTransactionReceiptModal(context, transaction);
+        if (!mounted) return;
+      }
+      Navigator.of(context).pop(resolvedStatus);
+    } catch (error) {
+      final message = error is ApiException
+          ? error.message
+          : 'Unable to submit withdrawal. Please try again.';
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
     }
-    Navigator.of(context).pop(status);
   }
 
   Future<bool> _showOutcomeSheet({
