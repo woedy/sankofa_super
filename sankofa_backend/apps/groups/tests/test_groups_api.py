@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
@@ -35,6 +37,7 @@ class GroupAPITests(APITestCase):
             "payout_order": "Rotating (Weekly)",
         }
         defaults.update(overrides)
+        defaults.setdefault("owner", None if defaults.get("is_public") else self.user)
         return Group.objects.create(**defaults)
 
     def test_list_returns_member_and_public_groups(self):
@@ -62,10 +65,12 @@ class GroupAPITests(APITestCase):
         member_group = next(item for item in payload if item["name"] == "Member Circle")
         self.assertIn(str(self.user.id), member_group["memberIds"])
         self.assertIn(self.user.full_name, member_group["memberNames"])
+        self.assertEqual(member_group["ownerId"], str(self.user.id))
 
         public_group = next(item for item in payload if item["name"] == "Public Circle")
         self.assertEqual(public_group["invites"][0]["name"], "Ama Darko")
         self.assertTrue(public_group["isPublic"])
+        self.assertTrue(public_group["ownedByPlatform"])
 
     def test_join_public_group_adds_membership(self):
         other_user = User.objects.create_user(phone_number="0241111111", full_name="Kwame")
@@ -101,3 +106,141 @@ class GroupAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertNotIn(str(self.user.id), response.json()["memberIds"])
         self.assertFalse(group.memberships.filter(user=self.user).exists())
+
+    def test_create_group_persists_invites_and_membership(self):
+        payload = {
+            "name": "Akwaba Circle",
+            "description": "Private susu for market day",
+            "contributionAmount": "150.00",
+            "frequency": "Weekly",
+            "startDate": (timezone.now() + timedelta(days=3)).isoformat(),
+            "invites": [
+                {"name": "Ama Darko", "phoneNumber": "+233200000001"},
+                {"name": "Yaw Mensah", "phoneNumber": "+233200000002"},
+            ],
+        }
+
+        response = self.client.post(reverse("groups:group-list"), data=payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        data = response.json()
+
+        group = Group.objects.get(pk=data["id"])
+        self.assertEqual(group.name, "Akwaba Circle")
+        self.assertEqual(group.target_member_count, 3)
+        self.assertEqual(group.contribution_amount, Decimal("150.00"))
+        self.assertTrue(group.memberships.filter(user=self.user).exists())
+        self.assertEqual(group.invites.count(), 2)
+        self.assertTrue(group.invites.filter(phone_number="+233200000001").exists())
+        self.assertTrue(group.invites.filter(phone_number="+233200000002").exists())
+        self.assertEqual(group.owner, self.user)
+        self.assertEqual(data["ownerId"], str(self.user.id))
+        self.assertFalse(data["ownedByPlatform"])
+
+    @override_settings(PLATFORM_ACCOUNT_PHONE_NUMBER="0249999999", PLATFORM_ACCOUNT_NAME="Sankofa Platform")
+    def test_create_public_group_assigns_platform_owner(self):
+        payload = {
+            "name": "Community Builders",
+            "description": "Public susu",
+            "contributionAmount": "200.00",
+            "frequency": "Weekly",
+            "isPublic": True,
+            "startDate": (timezone.now() + timedelta(days=2)).isoformat(),
+            "invites": [
+                {"name": "Ama Darko", "phoneNumber": "+233200000001"},
+            ],
+        }
+
+        response = self.client.post(reverse("groups:group-list"), data=payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        data = response.json()
+
+        group = Group.objects.get(pk=data["id"])
+        self.assertTrue(group.is_public)
+        self.assertIsNotNone(group.owner)
+        self.assertTrue(group.owner.is_staff)
+        self.assertNotEqual(group.owner, self.user)
+        self.assertTrue(data["ownedByPlatform"])
+
+    def test_create_group_rejects_duplicate_invite_numbers(self):
+        payload = {
+            "name": "Duplicate Circle",
+            "contributionAmount": "150.00",
+            "frequency": "Weekly",
+            "startDate": (timezone.now() + timedelta(days=3)).isoformat(),
+            "invites": [
+                {"name": "Ama", "phoneNumber": "+233200000001"},
+                {"name": "Yaw", "phoneNumber": "+233200000001"},
+            ],
+        }
+
+        response = self.client.post(reverse("groups:group-list"), data=payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("invites", response.json())
+
+    def test_create_group_rejects_admin_phone_number(self):
+        payload = {
+            "name": "Self Invite Circle",
+            "contributionAmount": "120.00",
+            "frequency": "Weekly",
+            "startDate": (timezone.now() + timedelta(days=5)).isoformat(),
+            "invites": [
+                {"name": "Duplicate Admin", "phoneNumber": self.user.phone_number},
+            ],
+        }
+
+        response = self.client.post(reverse("groups:group-list"), data=payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("invites", response.json())
+
+    def test_remind_invite_updates_metadata(self):
+        group = self._create_group(name="Reminder Circle", is_public=False)
+        GroupMembership.objects.create(group=group, user=self.user, display_name=self.user.full_name)
+        invite = GroupInvite.objects.create(
+            group=group,
+            name="Kweku Boateng",
+            phone_number="+233200000010",
+        )
+
+        url = reverse("groups:group-remind-invite", kwargs={"pk": group.pk, "invite_id": invite.pk})
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        invite.refresh_from_db()
+        self.assertIsNotNone(invite.last_reminded_at)
+        self.assertEqual(invite.reminder_count, 1)
+
+    def test_update_invite_status_changes_state(self):
+        group = self._create_group(name="Status Circle", is_public=False)
+        GroupMembership.objects.create(group=group, user=self.user, display_name=self.user.full_name)
+        invite = GroupInvite.objects.create(
+            group=group,
+            name="Afia",
+            phone_number="+233200000020",
+        )
+
+        url = reverse("groups:group-update-invite-status", kwargs={"pk": group.pk, "invite_id": invite.pk})
+        response = self.client.post(url, data={"status": GroupInvite.STATUS_DECLINED}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        invite.refresh_from_db()
+        self.assertEqual(invite.status, GroupInvite.STATUS_DECLINED)
+        self.assertIsNotNone(invite.responded_at)
+
+    def test_promote_invite_creates_membership(self):
+        group = self._create_group(name="Promotion Circle", is_public=False)
+        GroupMembership.objects.create(group=group, user=self.user, display_name=self.user.full_name)
+        invite = GroupInvite.objects.create(
+            group=group,
+            name="Yaw",
+            phone_number="+233200000030",
+        )
+
+        url = reverse("groups:group-promote-invite", kwargs={"pk": group.pk, "invite_id": invite.pk})
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        invite.refresh_from_db()
+        self.assertEqual(invite.status, GroupInvite.STATUS_ACCEPTED)
+        self.assertTrue(
+            GroupMembership.objects.filter(group=group, user__phone_number="+233200000030").exists()
+        )

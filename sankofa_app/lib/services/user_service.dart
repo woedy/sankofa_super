@@ -1,55 +1,58 @@
-import 'package:sankofasave/models/user_model.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+import '../models/user_model.dart';
+import 'api_client.dart';
+import 'auth_service.dart';
 
 class UserService {
-  static const String _userKey = 'current_user';
+  UserService({ApiClient? apiClient, AuthService? authService})
+      : _authService = authService ?? AuthService(),
+        _apiClient = apiClient ?? ApiClient(authService: authService ?? AuthService());
 
-  Future<UserModel?> getCurrentUser() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userJson = prefs.getString(_userKey);
-    if (userJson != null) {
-      return UserModel.fromJson(json.decode(userJson));
+  final AuthService _authService;
+  final ApiClient _apiClient;
+
+  Future<UserModel?> getCurrentUser({bool forceRefresh = false}) async {
+    if (!forceRefresh) {
+      final stored = await _authService.getStoredUser();
+      if (stored != null) {
+        return stored;
+      }
     }
-    return _getDefaultUser();
+
+    final response = await _apiClient.get('/api/auth/me/');
+    if (response is Map<String, dynamic>) {
+      final user = UserModel.fromApi(response);
+      await _authService.saveUser(user);
+      return user;
+    }
+    return null;
   }
 
-  Future<void> saveUser(UserModel user) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_userKey, json.encode(user.toJson()));
-  }
+  Future<UserModel?> refreshCurrentUser() => getCurrentUser(forceRefresh: true);
+
+  Future<void> saveUser(UserModel user) => _authService.saveUser(user);
 
   Future<void> updateKycStatus(String status) async {
     final user = await getCurrentUser();
-    if (user != null) {
-      final updatedUser = user.copyWith(
-        kycStatus: status,
-        updatedAt: DateTime.now(),
-      );
-      await saveUser(updatedUser);
+    if (user == null) {
+      return;
     }
+    final updated = user.copyWith(kycStatus: status, updatedAt: DateTime.now());
+    await _authService.saveUser(updated);
   }
 
-  Future<void> updateWalletBalance(double newBalance) async {
+  Future<void> updateWalletBalance(double newBalance, {DateTime? walletUpdatedAt, DateTime? userUpdatedAt}) async {
     final user = await getCurrentUser();
-    if (user != null) {
-      final updatedUser = user.copyWith(
-        walletBalance: newBalance,
-        updatedAt: DateTime.now(),
-      );
-      await saveUser(updatedUser);
+    if (user == null) {
+      return;
     }
+    final now = DateTime.now();
+    final updated = user.copyWith(
+      walletBalance: newBalance,
+      walletUpdatedAt: walletUpdatedAt ?? now,
+      updatedAt: userUpdatedAt ?? now,
+    );
+    await _authService.saveUser(updated);
   }
 
-  UserModel _getDefaultUser() => UserModel(
-    id: 'user_001',
-    name: 'Kwame Mensah',
-    phone: '+233 24 123 4567',
-    email: 'kwame.mensah@example.com',
-    photoUrl: 'assets/images/African_man_business_null_1760947790305.jpg',
-    kycStatus: 'verified',
-    walletBalance: 2450.00,
-    createdAt: DateTime.now().subtract(const Duration(days: 90)),
-    updatedAt: DateTime.now(),
-  );
+  Future<void> clearSession() => _authService.clearSession();
 }

@@ -26,11 +26,24 @@ class SavingsContributionModel {
 
   factory SavingsContributionModel.fromJson(Map<String, dynamic> json) =>
       SavingsContributionModel(
-        id: json['id'] as String,
-        goalId: json['goalId'] as String,
-        amount: (json['amount'] as num).toDouble(),
+        id: json['id']?.toString() ?? '',
+        goalId: json['goalId']?.toString() ?? '',
+        amount: _parseDouble(json['amount']),
         channel: json['channel'] as String,
-        note: json['note'] as String,
+        note: json['note'] as String? ?? '',
         date: DateTime.parse(json['date'] as String),
       );
+
+  factory SavingsContributionModel.fromApi(Map<String, dynamic> json) =>
+      SavingsContributionModel.fromJson(json);
+
+  static double _parseDouble(dynamic value) {
+    if (value is num) {
+      return value.toDouble();
+    }
+    if (value is String) {
+      return double.tryParse(value) ?? 0;
+    }
+    return 0;
+  }
 }

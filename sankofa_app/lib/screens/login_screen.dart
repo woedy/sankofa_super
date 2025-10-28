@@ -4,8 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sankofasave/screens/kyc_screen.dart';
 import 'package:sankofasave/screens/main_screen.dart';
+import 'package:sankofasave/screens/registration_screen.dart';
 import 'package:sankofasave/services/analytics_service.dart';
+import 'package:sankofasave/services/api_exception.dart';
+import 'package:sankofasave/services/auth_service.dart';
 import 'package:sankofasave/services/user_service.dart';
+import 'package:sankofasave/utils/ghana_phone_formatter.dart';
 import 'package:sankofasave/utils/route_transitions.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -15,38 +19,19 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class GhanaPhoneNumberFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
-    final digitsOnly = newValue.text.replaceAll(RegExp(r'\D'), '');
-    final truncated = digitsOnly.length > 9 ? digitsOnly.substring(0, 9) : digitsOnly;
-
-    final buffer = StringBuffer();
-    for (var i = 0; i < truncated.length; i++) {
-      buffer.write(truncated[i]);
-      if (i == 1 || i == 4) {
-        buffer.write(' ');
-      }
-    }
-
-    final formatted = buffer.toString();
-    return TextEditingValue(
-      text: formatted,
-      selection: TextSelection.collapsed(offset: formatted.length),
-    );
-  }
-}
-
 class _LoginScreenState extends State<LoginScreen> {
   final _phoneController = TextEditingController();
   final _otpController = TextEditingController();
-  final _phoneFormatter = GhanaPhoneNumberFormatter();
+  final _phoneFormatter = const GhanaPhoneNumberFormatter();
+  final AuthService _authService = AuthService();
   bool _otpSent = false;
   bool _isLoading = false;
   String? _phoneError;
   String? _otpError;
   int _secondsRemaining = 0;
   Timer? _countdownTimer;
+  String? _normalizedPhone;
+  bool _showSignupPrompt = false;
 
   @override
   void initState() {
@@ -91,21 +76,62 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    final normalizedPhone = _authService.normalizePhone(phone);
     setState(() {
       _isLoading = true;
       _phoneError = null;
       _otpError = null;
+      _showSignupPrompt = false;
     });
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() {
-      _isLoading = false;
-      _otpSent = true;
-    });
-    _startCountdown();
-    AnalyticsService().logEvent('login_otp_sent');
-    if (mounted) {
+
+    try {
+      await _authService.requestOtp(normalizedPhone, purpose: 'login');
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _otpSent = true;
+        _normalizedPhone = normalizedPhone;
+        _showSignupPrompt = false;
+      });
+      _startCountdown();
+      AnalyticsService().logEvent('login_otp_sent');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('OTP sent successfully!')),
+        SnackBar(content: Text('We\'ve sent a code to ${normalizedPhone.replaceFirst('+233', '+233 ')}')),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      _countdownTimer?.cancel();
+      final detail = error.details?['detail'] ?? error.message;
+      final detailString = detail is String ? detail : error.message;
+      final isUserMissing = detailString.toLowerCase().contains('no account is registered');
+      setState(() {
+        _isLoading = false;
+        _otpSent = false;
+        _phoneError = isUserMissing ? null : error.message;
+        _showSignupPrompt = isUserMissing;
+      });
+      AnalyticsService().logEvent(
+        'login_otp_request_failed',
+        properties: {
+          'reason': error.message,
+          'user_missing': isUserMissing,
+        },
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(detailString)),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _countdownTimer?.cancel();
+      setState(() {
+        _isLoading = false;
+        _otpSent = false;
+        _phoneError = 'We could not send the code. Please try again.';
+        _showSignupPrompt = false;
+      });
+      AnalyticsService().logEvent('login_otp_request_failed', properties: {'reason': error.toString()});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('We could not send the code. Please try again.')),
       );
     }
   }
@@ -117,33 +143,60 @@ class _LoginScreenState extends State<LoginScreen> {
       AnalyticsService().logEvent('login_otp_invalid_length');
       return;
     }
-    if (otp != '123456') {
-      setState(() => _otpError = 'That code didn\'t match. Try again.');
-      AnalyticsService().logEvent('login_otp_invalid');
-      return;
-    }
+
+    final normalizedPhone = _normalizedPhone ?? _authService.normalizePhone(_phoneController.text);
 
     setState(() {
       _otpError = null;
       _isLoading = true;
     });
-    await Future.delayed(const Duration(seconds: 1));
 
-    final user = await UserService().getCurrentUser();
-    final requiresKyc = (user?.kycStatus ?? 'pending') != 'verified';
-    AnalyticsService().logEvent('login_verified', properties: {
-      'next_screen': requiresKyc ? 'kyc' : 'main',
-    });
+    try {
+      final authenticatedUser = await _authService.verifyOtp(
+        phoneNumber: normalizedPhone,
+        code: otp,
+      );
+      final userService = UserService();
+      final refreshed = await userService.refreshCurrentUser();
+      final user = refreshed ?? authenticatedUser;
+      final requiresKyc = user.requiresKyc;
 
-    if (!mounted) return;
+      AnalyticsService().logEvent('login_verified', properties: {
+        'next_screen': requiresKyc ? 'kyc' : 'main',
+      });
 
-    _countdownTimer?.cancel();
-    setState(() => _isLoading = false);
-    Navigator.of(context).pushReplacement(
-      requiresKyc
-          ? RouteTransitions.slideLeft(const KYCScreen())
-          : RouteTransitions.slideLeft(const MainScreen()),
-    );
+      if (!mounted) return;
+
+      _countdownTimer?.cancel();
+      setState(() => _isLoading = false);
+      Navigator.of(context).pushReplacement(
+        requiresKyc
+            ? RouteTransitions.slideLeft(const KYCScreen())
+            : RouteTransitions.slideLeft(const MainScreen()),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      _countdownTimer?.cancel();
+      setState(() {
+        _isLoading = false;
+        _otpError = error.message;
+      });
+      AnalyticsService().logEvent('login_otp_invalid', properties: {'reason': error.message});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _countdownTimer?.cancel();
+      setState(() {
+        _isLoading = false;
+        _otpError = 'Something went wrong. Please try again.';
+      });
+      AnalyticsService().logEvent('login_otp_invalid', properties: {'reason': error.toString()});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('We could not verify the code. Please try again.')),
+      );
+    }
   }
 
   @override
@@ -292,6 +345,67 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ],
               const SizedBox(height: 32),
+              if (_showSignupPrompt) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.shade50,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Theme.of(context).colorScheme.secondary.withOpacity(0.4)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "It looks like you're new here",
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(context).colorScheme.secondary,
+                            ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Create a Sankofa Save account to continue your onboarding journey.',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: const Color(0xFF0F172A),
+                            ),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: _isLoading
+                              ? null
+                              : () async {
+                                  final result = await Navigator.of(context).push(
+                                    RouteTransitions.slideLeft(
+                                      RegistrationScreen(prefilledPhone: _phoneController.text),
+                                    ),
+                                  );
+                                  if (result == true && mounted) {
+                                    setState(() {
+                                      _otpSent = false;
+                                      _phoneError = null;
+                                      _otpController.clear();
+                                      _showSignupPrompt = false;
+                                    });
+                                  }
+                                },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Theme.of(context).colorScheme.secondary,
+                            side: BorderSide(color: Theme.of(context).colorScheme.secondary),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            textStyle: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          child: const Text('Create a new Sankofa Save account'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
               Center(
                 child: Text(
                   'By continuing, you agree to our Terms & Privacy Policy',
@@ -299,6 +413,35 @@ class _LoginScreenState extends State<LoginScreen> {
                     color: Colors.grey.shade500,
                   ),
                   textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Center(
+                child: TextButton(
+                  onPressed: _isLoading
+                      ? null
+                      : () async {
+                          final result = await Navigator.of(context).push(
+                            RouteTransitions.slideLeft(
+                              RegistrationScreen(prefilledPhone: _phoneController.text),
+                            ),
+                          );
+                          if (result == true && mounted) {
+                            setState(() {
+                              _otpSent = false;
+                              _phoneError = null;
+                              _otpController.clear();
+                              _showSignupPrompt = false;
+                            });
+                          }
+                        },
+                  child: Text(
+                    'New to Sankofa Save? Create an account',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
+                  ),
                 ),
               ),
             ],

@@ -12,6 +12,8 @@ class TransactionModel {
   final double? fee;
   final String? reference;
   final String? counterparty;
+  final double? balanceAfter;
+  final double? platformBalanceAfter;
 
   TransactionModel({
     required this.id,
@@ -27,6 +29,8 @@ class TransactionModel {
     this.fee,
     this.reference,
     this.counterparty,
+    this.balanceAfter,
+    this.platformBalanceAfter,
   });
 
   Map<String, dynamic> toJson() => {
@@ -43,12 +47,14 @@ class TransactionModel {
     if (fee != null) 'fee': fee,
     if (reference != null) 'reference': reference,
     if (counterparty != null) 'counterparty': counterparty,
+    if (balanceAfter != null) 'balanceAfter': balanceAfter,
+    if (platformBalanceAfter != null) 'platformBalanceAfter': platformBalanceAfter,
   };
 
   factory TransactionModel.fromJson(Map<String, dynamic> json) => TransactionModel(
     id: json['id'] as String,
     userId: json['userId'] as String,
-    amount: (json['amount'] as num).toDouble(),
+    amount: _toDouble(json['amount']),
     type: json['type'] as String,
     status: json['status'] as String,
     description: json['description'] as String,
@@ -56,9 +62,11 @@ class TransactionModel {
     createdAt: DateTime.parse(json['createdAt'] as String),
     updatedAt: DateTime.parse(json['updatedAt'] as String),
     channel: json['channel'] as String?,
-    fee: (json['fee'] as num?)?.toDouble(),
+    fee: _toDoubleOrNull(json['fee']),
     reference: json['reference'] as String?,
     counterparty: json['counterparty'] as String?,
+    balanceAfter: _toDoubleOrNull(json['balanceAfter']),
+    platformBalanceAfter: _toDoubleOrNull(json['platformBalanceAfter']),
   );
 
   TransactionModel copyWith({
@@ -75,19 +83,46 @@ class TransactionModel {
     double? fee,
     String? reference,
     String? counterparty,
+    double? balanceAfter,
+    double? platformBalanceAfter,
   }) => TransactionModel(
-    id: id ?? this.id,
-    userId: userId ?? this.userId,
-    amount: amount ?? this.amount,
-    type: type ?? this.type,
+        id: id ?? this.id,
+        userId: userId ?? this.userId,
+        amount: amount ?? this.amount,
+        type: type ?? this.type,
     status: status ?? this.status,
     description: description ?? this.description,
     date: date ?? this.date,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
-    channel: channel ?? this.channel,
-    fee: fee ?? this.fee,
-    reference: reference ?? this.reference,
-    counterparty: counterparty ?? this.counterparty,
-  );
+        channel: channel ?? this.channel,
+        fee: fee ?? this.fee,
+        reference: reference ?? this.reference,
+        counterparty: counterparty ?? this.counterparty,
+        balanceAfter: balanceAfter ?? this.balanceAfter,
+        platformBalanceAfter: platformBalanceAfter ?? this.platformBalanceAfter,
+      );
+
+  static double _toDouble(dynamic value) {
+    if (value is num) {
+      return value.toDouble();
+    }
+    if (value is String) {
+      return double.tryParse(value) ?? 0;
+    }
+    throw ArgumentError('Unsupported amount value: $value');
+  }
+
+  static double? _toDoubleOrNull(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+    if (value is num) {
+      return value.toDouble();
+    }
+    if (value is String) {
+      return double.tryParse(value);
+    }
+    return null;
+  }
 }
