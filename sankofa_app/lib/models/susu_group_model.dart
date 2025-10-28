@@ -12,6 +12,9 @@ class SusuGroupModel {
   final int totalCycles;
   final DateTime nextPayoutDate;
   final String payoutOrder;
+  final String? ownerId;
+  final String ownerName;
+  final bool ownedByPlatform;
   final bool isPublic;
   final String? description;
   final String? frequency;
@@ -32,6 +35,9 @@ class SusuGroupModel {
     required this.totalCycles,
     required this.nextPayoutDate,
     required this.payoutOrder,
+    this.ownerId,
+    required this.ownerName,
+    this.ownedByPlatform = false,
     this.isPublic = false,
     this.description,
     this.frequency,
@@ -53,6 +59,9 @@ class SusuGroupModel {
     'totalCycles': totalCycles,
     'nextPayoutDate': nextPayoutDate.toIso8601String(),
     'payoutOrder': payoutOrder,
+    'ownerId': ownerId,
+    'ownerName': ownerName,
+    'ownedByPlatform': ownedByPlatform,
     'isPublic': isPublic,
     'description': description,
     'frequency': frequency,
@@ -62,31 +71,54 @@ class SusuGroupModel {
     'updatedAt': updatedAt.toIso8601String(),
   };
 
-  factory SusuGroupModel.fromJson(Map<String, dynamic> json) => SusuGroupModel(
-    id: json['id'] as String,
-    name: json['name'] as String,
-    memberIds: List<String>.from(json['memberIds'] as List),
-    memberNames: List<String>.from(json['memberNames'] as List),
-    invites: (json['invites'] as List?)
-            ?.map((item) =>
-                GroupInviteModel.fromJson(item as Map<String, dynamic>))
-            .toList() ??
-        const [],
-    targetMemberCount:
-        json['targetMemberCount'] as int? ?? List<String>.from(json['memberNames'] as List).length,
-    contributionAmount: (json['contributionAmount'] as num).toDouble(),
-    cycleNumber: json['cycleNumber'] as int,
-    totalCycles: json['totalCycles'] as int,
-    nextPayoutDate: DateTime.parse(json['nextPayoutDate'] as String),
-    payoutOrder: json['payoutOrder'] as String,
-    isPublic: json['isPublic'] as bool? ?? false,
-    description: json['description'] as String?,
-    frequency: json['frequency'] as String?,
-    location: json['location'] as String?,
-    requiresApproval: json['requiresApproval'] as bool? ?? false,
-    createdAt: DateTime.parse(json['createdAt'] as String),
-    updatedAt: DateTime.parse(json['updatedAt'] as String),
-  );
+  factory SusuGroupModel.fromJson(Map<String, dynamic> json) {
+    final memberIdsRaw = (json['memberIds'] as List?) ?? const [];
+    final memberNamesRaw = (json['memberNames'] as List?) ?? const [];
+    final invitesRaw = (json['invites'] as List?) ?? const [];
+
+    return SusuGroupModel(
+      id: json['id']?.toString() ?? '',
+      name: json['name'] as String,
+      memberIds: memberIdsRaw.map((value) => value.toString()).toList(),
+      memberNames: memberNamesRaw.map((value) => value.toString()).toList(),
+      invites: invitesRaw
+          .whereType<Map>()
+          .map((item) => GroupInviteModel.fromJson(item.cast<String, dynamic>()))
+          .toList(),
+      targetMemberCount:
+          json['targetMemberCount'] as int? ?? memberNamesRaw.length,
+      contributionAmount: _parseDouble(json['contributionAmount']),
+      cycleNumber: json['cycleNumber'] as int? ?? 0,
+      totalCycles: json['totalCycles'] as int? ?? 0,
+      nextPayoutDate: DateTime.parse(json['nextPayoutDate'] as String),
+      payoutOrder: json['payoutOrder'] as String,
+      ownerId: json['ownerId']?.toString(),
+      ownerName: (json['ownerName'] as String?)?.trim().isNotEmpty == true
+          ? (json['ownerName'] as String)
+          : 'Sankofa Platform',
+      ownedByPlatform: json['ownedByPlatform'] as bool? ?? false,
+      isPublic: json['isPublic'] as bool? ?? false,
+      description: json['description'] as String?,
+      frequency: json['frequency'] as String?,
+      location: json['location'] as String?,
+      requiresApproval: json['requiresApproval'] as bool? ?? false,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      updatedAt: DateTime.parse(json['updatedAt'] as String),
+    );
+  }
+
+  factory SusuGroupModel.fromApi(Map<String, dynamic> json) =>
+      SusuGroupModel.fromJson(json);
+
+  static double _parseDouble(dynamic value) {
+    if (value is num) {
+      return value.toDouble();
+    }
+    if (value is String) {
+      return double.tryParse(value) ?? 0;
+    }
+    return 0;
+  }
 
   SusuGroupModel copyWith({
     String? id,
@@ -100,6 +132,9 @@ class SusuGroupModel {
     int? totalCycles,
     DateTime? nextPayoutDate,
     String? payoutOrder,
+    String? ownerId,
+    String? ownerName,
+    bool? ownedByPlatform,
     bool? isPublic,
     String? description,
     String? frequency,
@@ -119,6 +154,9 @@ class SusuGroupModel {
     totalCycles: totalCycles ?? this.totalCycles,
     nextPayoutDate: nextPayoutDate ?? this.nextPayoutDate,
     payoutOrder: payoutOrder ?? this.payoutOrder,
+    ownerId: ownerId ?? this.ownerId,
+    ownerName: ownerName ?? this.ownerName,
+    ownedByPlatform: ownedByPlatform ?? this.ownedByPlatform,
     isPublic: isPublic ?? this.isPublic,
     description: description ?? this.description,
     frequency: frequency ?? this.frequency,

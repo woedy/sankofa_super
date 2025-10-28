@@ -11,7 +11,14 @@ class GroupQuerySet(models.QuerySet):
     def for_user(self, user):
         if user.is_anonymous:
             return self.filter(is_public=True)
-        return self.filter(models.Q(is_public=True) | models.Q(memberships__user=user)).distinct()
+        return (
+            self.filter(
+                models.Q(is_public=True)
+                | models.Q(memberships__user=user)
+                | models.Q(owner=user)
+            )
+            .distinct()
+        )
 
 
 class Group(models.Model):
@@ -28,6 +35,13 @@ class Group(models.Model):
     total_cycles = models.PositiveIntegerField(default=1)
     next_payout_date = models.DateTimeField()
     payout_order = models.CharField(max_length=255, blank=True)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="owned_groups",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

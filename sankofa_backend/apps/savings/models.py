@@ -55,3 +55,20 @@ class SavingsContribution(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover - debug helper
         return f"{self.amount} to {self.goal.title}"
+
+
+class SavingsRedemption(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    goal = models.ForeignKey(SavingsGoal, related_name="redemptions", on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="savings_redemptions", on_delete=models.CASCADE)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    channel = models.CharField(max_length=64, default="Mobile Money")
+    note = models.CharField(max_length=255, blank=True)
+    recorded_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-recorded_at"]
+
+    def __str__(self) -> str:  # pragma: no cover - debug helper
+        return f"{self.amount} withdrawal from {self.goal.title}"

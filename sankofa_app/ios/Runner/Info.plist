@@ -43,7 +43,9 @@
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
+        <key>UIApplicationSupportsIndirectInputEvents</key>
+        <true/>
+        <key>NSContactsUsageDescription</key>
+        <string>Allow Sankofa Save to suggest friends from your contacts when creating private circles.</string>
 </dict>
 </plist>

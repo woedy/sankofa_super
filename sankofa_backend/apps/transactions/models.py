@@ -1,9 +1,66 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
+
 from django.conf import settings
 from django.db import models
+from django.db.models import F, Q
 from django.utils import timezone
+
+
+class WalletManager(models.Manager):
+    def ensure_platform(self, *, name: str | None = None) -> "Wallet":
+        defaults = {"name": name or "Platform Float"}
+        wallet, _created = self.get_or_create(is_platform=True, defaults=defaults)
+        return wallet
+
+    def ensure_for_user(self, user) -> "Wallet":
+        wallet, _created = self.get_or_create(
+            user=user,
+            defaults={
+                "name": getattr(user, "full_name", "").strip() or user.phone_number,
+            },
+        )
+        return wallet
+
+
+class Wallet(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        related_name="wallet",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+    )
+    name = models.CharField(max_length=255, blank=True)
+    is_platform = models.BooleanField(default=False)
+    balance = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    currency = models.CharField(max_length=8, default="GHS")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = WalletManager()
+
+    class Meta:
+        verbose_name = "Wallet"
+        verbose_name_plural = "Wallets"
+        constraints = [
+            models.UniqueConstraint(
+                fields=("is_platform",),
+                condition=Q(is_platform=True),
+                name="unique_platform_wallet",
+            )
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - admin helper
+        label = self.name or "Wallet"
+        if self.is_platform:
+            label = f"Platform Wallet ({label})"
+        elif self.user:
+            label = f"{label} ({self.user.phone_number})"
+        return label
 
 
 class TransactionQuerySet(models.QuerySet):
@@ -62,6 +119,8 @@ class Transaction(models.Model):
     fee = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     reference = models.CharField(max_length=64, blank=True)
     counterparty = models.CharField(max_length=128, blank=True)
+    balance_after = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    platform_balance_after = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     group = models.ForeignKey(
         "groups.Group",
         related_name="transactions",
