@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:sankofasave/models/notification_model.dart';
-import 'package:sankofasave/models/transaction_model.dart';
 import 'package:sankofasave/models/user_model.dart';
+import 'package:sankofasave/services/api_exception.dart';
 import 'package:sankofasave/services/notification_service.dart';
-import 'package:sankofasave/services/transaction_service.dart';
 import 'package:sankofasave/services/user_service.dart';
+import 'package:sankofasave/services/wallet_service.dart';
 import 'package:sankofasave/ui/components/ui.dart';
 import 'package:sankofasave/screens/transaction_receipt_modal.dart';
 
@@ -21,8 +21,8 @@ class DepositFlowScreen extends StatefulWidget {
 
 class _DepositFlowScreenState extends State<DepositFlowScreen> {
   final UserService _userService = UserService();
-  final TransactionService _transactionService = TransactionService();
   final NotificationService _notificationService = NotificationService();
+  final WalletService _walletService = WalletService();
 
   final GlobalKey<FormState> _amountFormKey = GlobalKey<FormState>();
   final TextEditingController _amountController = TextEditingController();
@@ -194,60 +194,77 @@ class _DepositFlowScreenState extends State<DepositFlowScreen> {
 
     final now = DateTime.now();
     final reference = _reviewReference ?? _generateReference();
-    final newBalance = user.walletBalance + amount;
     final fee = _calculatedFee;
 
-    final transaction = TransactionModel(
-      id: reference,
-      userId: user.id,
-      amount: amount,
-      type: 'deposit',
-      status: 'success',
-      description: 'Wallet deposit via ${channel.name}',
-      date: now,
-      createdAt: now,
-      updatedAt: now,
-      channel: channel.name,
-      fee: fee,
-      reference: reference,
-      counterparty: user.phone,
-    );
+    try {
+      final result = await _walletService.deposit(
+        amount: amount,
+        channel: channel.name,
+        reference: reference,
+        fee: fee > 0 ? fee : null,
+        description: 'Wallet deposit via ${channel.name}',
+        counterparty: user.phone,
+      );
 
-    await _transactionService.addTransaction(transaction);
-    await _userService.updateWalletBalance(newBalance);
-    await _notificationService.addNotification(
-      NotificationModel(
-        id: 'notif_${now.millisecondsSinceEpoch}',
-        userId: user.id,
-        title: 'Deposit confirmed',
-        message: '${_formatCurrency(amount)} added to your wallet via ${channel.name}.',
-        type: 'wallet',
-        isRead: false,
-        date: now,
-        createdAt: now,
-        updatedAt: now,
-      ),
-    );
+      final transaction = result.transaction;
+      final newBalance = result.walletBalance;
+      final recordedFee = transaction.fee ?? fee;
 
-    if (!mounted) return;
+      await _userService.updateWalletBalance(
+        newBalance,
+        walletUpdatedAt: result.walletUpdatedAt,
+      );
 
-    setState(() {
-      _user = user.copyWith(walletBalance: newBalance, updatedAt: now);
-      _reviewReference = reference;
-      _isSubmitting = false;
-    });
+      await _notificationService.addNotification(
+        NotificationModel(
+          id: 'notif_${now.millisecondsSinceEpoch}',
+          userId: user.id,
+          title: 'Deposit confirmed',
+          message: '${_formatCurrency(transaction.amount)} added to your wallet via ${channel.name}.',
+          type: 'wallet',
+          isRead: false,
+          date: now,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
 
-    final shouldShowReceipt = await _showSuccessSheet(
-      amount: amount,
-      fee: fee,
-      newBalance: newBalance,
-      reference: reference,
-    );
-    if (shouldShowReceipt && mounted) {
-      await showTransactionReceiptModal(context, transaction);
+      if (!mounted) return;
+
+      setState(() {
+        _user = user.copyWith(
+          walletBalance: newBalance,
+          walletUpdatedAt: result.walletUpdatedAt,
+          updatedAt: DateTime.now(),
+        );
+        _reviewReference = transaction.reference ?? reference;
+        _isSubmitting = false;
+      });
+
+      final shouldShowReceipt = await _showSuccessSheet(
+        amount: transaction.amount,
+        fee: recordedFee,
+        newBalance: newBalance,
+        reference: transaction.reference ?? reference,
+      );
+      if (shouldShowReceipt && mounted) {
+        await showTransactionReceiptModal(context, transaction);
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      final message = error is ApiException
+          ? error.message
+          : 'Unable to complete deposit. Please try again.';
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
     }
-    if (!mounted) return;
-    Navigator.of(context).pop(true);
   }
 
   Future<bool> _showSuccessSheet({

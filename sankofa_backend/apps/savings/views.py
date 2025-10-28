@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from .models import SavingsGoal
@@ -10,8 +12,10 @@ from .serializers import (
     SavingsContributionOutcomeSerializer,
     SavingsContributionSerializer,
     SavingsGoalSerializer,
+    SavingsRedemptionCreateSerializer,
+    SavingsRedemptionOutcomeSerializer,
 )
-from .services import record_contribution
+from .services import collect_savings, record_contribution
 from sankofa_backend.apps.groups.realtime import broadcast_group_event
 
 
@@ -43,13 +47,23 @@ class SavingsGoalViewSet(viewsets.ModelViewSet):
         create_serializer = SavingsContributionCreateSerializer(data=request.data)
         create_serializer.is_valid(raise_exception=True)
 
-        updated_goal, contribution, milestones = record_contribution(
-            goal=goal,
-            user=request.user,
-            amount=create_serializer.validated_data["amount"],
-            channel=create_serializer.validated_data.get("channel", "Mobile Money"),
-            note=create_serializer.validated_data.get("note", ""),
-        )
+        try:
+            (
+                updated_goal,
+                contribution,
+                milestones,
+                transaction_record,
+                user_wallet,
+                platform_wallet,
+            ) = record_contribution(
+                goal=goal,
+                user=request.user,
+                amount=create_serializer.validated_data["amount"],
+                channel=create_serializer.validated_data.get("channel", "Mobile Money"),
+                note=create_serializer.validated_data.get("note", ""),
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.message_dict) from exc
 
         milestone_payload = [
             {"threshold": milestone.threshold, "achievedAt": milestone.achieved_at, "message": milestone.message}
@@ -61,6 +75,9 @@ class SavingsGoalViewSet(viewsets.ModelViewSet):
                 "goal": updated_goal,
                 "contribution": contribution,
                 "unlockedMilestones": milestone_payload,
+                "transaction": transaction_record,
+                "wallet": user_wallet,
+                "platformWallet": platform_wallet,
             },
             context=self.get_serializer_context(),
         )
@@ -82,3 +99,49 @@ class SavingsGoalViewSet(viewsets.ModelViewSet):
                 )
 
         return Response(outcome_data, status=status_code)
+
+    @action(methods=["post"], detail=True, url_path="collect")
+    def collect(self, request, pk: str | None = None):
+        goal = self.get_object()
+        create_serializer = SavingsRedemptionCreateSerializer(data=request.data)
+        create_serializer.is_valid(raise_exception=True)
+
+        try:
+            updated_goal, redemption, transaction_record, user_wallet, platform_wallet = collect_savings(
+                goal=goal,
+                user=request.user,
+                amount=create_serializer.validated_data["amount"],
+                channel=create_serializer.validated_data.get("channel", "Mobile Money"),
+                note=create_serializer.validated_data.get("note", ""),
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.message_dict) from exc
+
+        outcome_serializer = SavingsRedemptionOutcomeSerializer(
+            {
+                "goal": updated_goal,
+                "redemption": redemption,
+                "transaction": transaction_record,
+                "wallet": user_wallet,
+                "platformWallet": platform_wallet,
+            },
+            context=self.get_serializer_context(),
+        )
+
+        outcome_data = outcome_serializer.data
+
+        group_ids = list(request.user.group_memberships.values_list("group_id", flat=True))
+        if group_ids:
+            member_name = request.user.full_name or request.user.phone_number
+            for group_id in group_ids:
+                broadcast_group_event(
+                    group_id=group_id,
+                    event="savings.redemption.recorded",
+                    payload={
+                        "groupId": str(group_id),
+                        "member": {"id": str(request.user.id), "name": member_name},
+                        "outcome": outcome_data,
+                    },
+                )
+
+        return Response(outcome_data, status=status.HTTP_201_CREATED)

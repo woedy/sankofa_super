@@ -1,7 +1,16 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
-import 'package:sankofasave/screens/main_screen.dart';
-import 'package:sankofasave/services/user_service.dart';
-import 'package:sankofasave/utils/route_transitions.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../services/analytics_service.dart';
+import '../services/api_exception.dart';
+import '../services/kyc_service.dart';
+import '../services/user_service.dart';
+import '../utils/route_transitions.dart';
+import 'main_screen.dart';
+
+enum _CardSide { front, back }
 
 class KYCScreen extends StatefulWidget {
   const KYCScreen({super.key});
@@ -11,13 +20,22 @@ class KYCScreen extends StatefulWidget {
 }
 
 class _KYCScreenState extends State<KYCScreen> {
-  int _currentStep = 0;
-  bool _isUploaded = false;
-  bool _isSubmitting = false;
+  final ImagePicker _picker = ImagePicker();
+  final KycService _kycService = KycService();
   final UserService _userService = UserService();
+  final AnalyticsService _analytics = AnalyticsService();
+
+  int _currentStep = 0;
+  bool _isSubmitting = false;
+  XFile? _frontImage;
+  XFile? _backImage;
+  Uint8List? _frontPreview;
+  Uint8List? _backPreview;
+  String? _errorMessage;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -43,9 +61,7 @@ class _KYCScreenState extends State<KYCScreen> {
                               child: Container(
                                 height: 4,
                                 decoration: BoxDecoration(
-                                  color: isActive
-                                      ? Theme.of(context).colorScheme.secondary
-                                      : Colors.grey.shade200,
+                                  color: isActive ? theme.colorScheme.secondary : Colors.grey.shade200,
                                   borderRadius: BorderRadius.circular(2),
                                 ),
                               ),
@@ -59,13 +75,31 @@ class _KYCScreenState extends State<KYCScreen> {
                   const SizedBox(height: 16),
                   Text(
                     'Step ${_currentStep + 1} of 3',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    style: theme.textTheme.bodyMedium?.copyWith(
                       color: Colors.grey.shade600,
                     ),
                   ),
                 ],
               ),
             ),
+            if (_errorMessage != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    _errorMessage!,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onErrorContainer,
+                    ),
+                  ),
+                ),
+              ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24.0),
@@ -89,17 +123,23 @@ class _KYCScreenState extends State<KYCScreen> {
                     child: ElevatedButton(
                       onPressed: _canContinue ? _handleContinue : null,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Theme.of(context).colorScheme.secondary,
+                        backgroundColor: theme.colorScheme.secondary,
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                      child: Text(
-                        _currentStep == 2 ? 'Finish & Go to Dashboard' : 'Continue',
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                      ),
+                      child: _isSubmitting
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
+                            )
+                          : Text(
+                              _currentStep == 2 ? 'Submit for Review' : 'Continue',
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                            ),
                     ),
                   ),
                   if (_currentStep > 0) ...[
@@ -109,11 +149,14 @@ class _KYCScreenState extends State<KYCScreen> {
                       child: OutlinedButton(
                         onPressed: _isSubmitting
                             ? null
-                            : () => setState(() => _currentStep = (_currentStep - 1).clamp(0, 2)),
+                            : () => setState(() {
+                                  _currentStep = (_currentStep - 1).clamp(0, 2);
+                                  _errorMessage = null;
+                                }),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: Theme.of(context).colorScheme.onSurface,
+                          foregroundColor: theme.colorScheme.onSurface,
                           side: BorderSide(
-                            color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.4),
+                            color: theme.colorScheme.outline.withValues(alpha: 0.4),
                           ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
@@ -133,207 +176,179 @@ class _KYCScreenState extends State<KYCScreen> {
   }
 
   Widget _buildStepContent() {
-    final theme = Theme.of(context);
     switch (_currentStep) {
       case 0:
-        return SizedBox(
-          width: double.infinity,
-          child: Column(
-            key: const ValueKey('kyc_step_upload'),
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.secondary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, color: theme.colorScheme.secondary),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Upload your Ghana Card for verification',
-                        style: TextStyle(
-                          color: theme.colorScheme.secondary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 32),
-              Text(
-                'Upload Ghana Card',
-                style: theme.textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF0F172A),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Take a clear photo of the front of your Ghana Card to help us confirm your identity.',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: Colors.grey.shade600,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 32),
-              GestureDetector(
-                onTap: () => setState(() => _isUploaded = true),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeInOut,
-                  width: double.infinity,
-                  height: 200,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: _isUploaded
-                          ? theme.colorScheme.secondary
-                          : Colors.grey.shade300,
-                      width: 2,
-                    ),
-                  ),
-                  child: _isUploaded
-                      ? Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.check_circle, size: 60, color: theme.colorScheme.secondary),
-                            const SizedBox(height: 12),
-                            const Text(
-                              'Ghana Card Uploaded',
-                              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.cloud_upload_outlined, size: 60, color: Colors.grey.shade400),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Tap to upload',
-                              style: TextStyle(
-                                color: Colors.grey.shade600,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                ),
-              ),
-            ],
-          ),
-        );
+        return _buildCaptureStep(_CardSide.front);
       case 1:
-        return SizedBox(
-          key: const ValueKey('kyc_step_review'),
-          width: double.infinity,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Review your details',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF0F172A),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Make sure the information on your Ghana Card matches your profile. Well use these details to activate your account.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey.shade600,
-                  height: 1.6,
-                ),
-              ),
-              const SizedBox(height: 24),
-              _buildChecklistItem(Icons.badge_outlined, 'Full name matches ID', 'Double-check spelling and middle names to avoid delays.'),
-              _buildChecklistItem(Icons.home_outlined, 'Address confirmed', 'Ensure your residential address is up-to-date and clearly visible.'),
-              _buildChecklistItem(Icons.numbers_outlined, 'Ghana Card number clear', 'Make sure all digits are captured without glare or blur.'),
-            ],
-          ),
-        );
+        return _buildCaptureStep(_CardSide.back);
       default:
-        return SizedBox(
-          key: const ValueKey('kyc_step_confirm'),
-          width: double.infinity,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(height: 12),
-              Container(
-                width: 88,
-                height: 88,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.secondary.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.verified_user, color: theme.colorScheme.secondary, size: 42),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Everything looks good!',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF0F172A),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Submit your verification to unlock your SankoFa Save dashboard. This usually takes less than a minute.',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey.shade600,
-                  height: 1.6,
-                ),
-              ),
-            ],
-          ),
-        );
+        return _buildReviewStep();
     }
   }
 
-  Widget _buildChecklistItem(IconData icon, String title, String subtitle) {
+  Widget _buildCaptureStep(_CardSide side) {
     final theme = Theme.of(context);
+    final isFront = side == _CardSide.front;
+    final preview = isFront ? _frontPreview : _backPreview;
+    final title = isFront ? 'Capture the front of your Ghana Card' : 'Capture the back of your Ghana Card';
+    final subtitle = isFront
+        ? 'Hold your card steady, ensure the hologram is visible, and capture the entire front without glare.'
+        : 'Flip your card over and capture the back so the barcode and signature line are sharp and readable.';
+
+    return SizedBox(
+      key: ValueKey(side),
+      width: double.infinity,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildTipCard(
+            theme,
+            title: 'Position your card inside the frame',
+            description:
+                'Use good lighting, place the card on a dark surface, and keep your hands steady so the details stay crisp.',
+          ),
+          const SizedBox(height: 24),
+          Text(
+            title,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: const Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: Colors.grey.shade600,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 24),
+          _buildPreview(preview, theme),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _isSubmitting ? null : () => _captureCard(side, ImageSource.camera),
+                  icon: const Icon(Icons.camera_alt),
+                  label: const Text('Take photo'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.colorScheme.secondary,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _isSubmitting ? null : () => _captureCard(side, ImageSource.gallery),
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('Upload photo'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: theme.colorScheme.onSurface,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'Photo tips',
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 12),
+          _buildGuidanceList(theme),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReviewStep() {
+    final theme = Theme.of(context);
+    return SizedBox(
+      key: const ValueKey('review'),
+      width: double.infinity,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildTipCard(
+            theme,
+            title: 'Review before you submit',
+            description: 'Zoom in on each image and confirm the card number, expiry date, and barcode are readable.',
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'Is everything clear?',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'We will send these photos securely to our verification team. You can retake either side if the text looks blurry or cropped.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: Colors.grey.shade600,
+              height: 1.6,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(child: _buildPreview(_frontPreview, theme, label: 'Front side', allowRetake: true, side: _CardSide.front)),
+              const SizedBox(width: 16),
+              Expanded(child: _buildPreview(_backPreview, theme, label: 'Back side', allowRetake: true, side: _CardSide.back)),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'By continuing you give Sankofa permission to store these images securely. We will move to MinIO cloud storage soon; for now they are encrypted on this device and uploaded to our protected servers.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTipCard(
+    ThemeData theme, {
+    required String title,
+    required String description,
+  }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
+        color: theme.colorScheme.secondary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(16),
-        color: theme.colorScheme.surfaceVariant.withValues(alpha: 0.35),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.secondary.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: theme.colorScheme.secondary),
-          ),
-          const SizedBox(width: 14),
+          Icon(Icons.info_outline, color: theme.colorScheme.secondary),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.secondary,
+                  ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 Text(
-                  subtitle,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+                  description,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     height: 1.5,
                   ),
                 ),
@@ -345,28 +360,227 @@ class _KYCScreenState extends State<KYCScreen> {
     );
   }
 
+  Widget _buildPreview(
+    Uint8List? bytes,
+    ThemeData theme, {
+    String? label,
+    bool allowRetake = false,
+    _CardSide? side,
+  }) {
+    final hasImage = bytes != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          height: 200,
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: hasImage ? theme.colorScheme.secondary : Colors.grey.shade300,
+              width: 2,
+            ),
+          ),
+          child: hasImage
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Image.memory(
+                    bytes,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                  ),
+                )
+              : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.credit_card, size: 52, color: Colors.grey.shade400),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No photo yet',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Tap a button below to capture a clear shot.',
+                      style: TextStyle(
+                        color: Colors.grey.shade500,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+        if (label != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF0F172A),
+            ),
+          ),
+        ],
+        if (hasImage && allowRetake && side != null) ...[
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: _isSubmitting ? null : () => _captureCard(side, ImageSource.camera),
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retake photo'),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildGuidanceList(ThemeData theme) {
+    const tips = [
+      'Check that your full name and Ghana Card number are readable.',
+      'Avoid reflections by tilting the card slightly if necessary.',
+      'Remove any plastic sleeves or covers before snapping the photo.',
+    ];
+
+    return Column(
+      children: tips
+          .map(
+            (tip) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.secondary.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.check, size: 16, color: theme.colorScheme.secondary),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      tip,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+
   bool get _canContinue {
     if (_isSubmitting) return false;
-    if (_currentStep == 0) return _isUploaded;
-    return true;
+    if (_currentStep == 0) return _frontPreview != null;
+    if (_currentStep == 1) return _backPreview != null;
+    return _frontPreview != null && _backPreview != null;
   }
 
   Future<void> _handleContinue() async {
     if (_currentStep < 2) {
-      setState(() => _currentStep += 1);
+      setState(() {
+        _currentStep += 1;
+        _errorMessage = null;
+      });
       return;
     }
 
-    setState(() => _isSubmitting = true);
-    await _userService.updateKycStatus('verified');
+    await _submitDocuments();
+  }
 
-    if (!mounted) return;
+  Future<void> _captureCard(_CardSide side, ImageSource source) async {
+    try {
+      final picked = await _picker.pickImage(
+        source: source,
+        preferredCameraDevice: CameraDevice.rear,
+        imageQuality: 85,
+        maxWidth: 2400,
+      );
 
-    setState(() => _isSubmitting = false);
+      if (picked == null) {
+        _analytics.logEvent('kyc_capture_cancelled', properties: {'side': side.name, 'source': source.name});
+        return;
+      }
 
-    Navigator.of(context).pushAndRemoveUntil(
-      RouteTransitions.fade(const MainScreen()),
-      (route) => false,
-    );
+      final bytes = await picked.readAsBytes();
+
+      setState(() {
+        _errorMessage = null;
+        if (side == _CardSide.front) {
+          _frontImage = picked;
+          _frontPreview = bytes;
+        } else {
+          _backImage = picked;
+          _backPreview = bytes;
+        }
+      });
+
+      _analytics.logEvent('kyc_capture_success', properties: {'side': side.name, 'source': source.name});
+    } on ApiException catch (error) {
+      setState(() => _errorMessage = error.message);
+      _analytics.logEvent('kyc_capture_failed', properties: {'side': side.name, 'source': source.name, 'reason': error.message});
+    } catch (error) {
+      setState(() => _errorMessage = 'We could not access the ${source == ImageSource.camera ? 'camera' : 'gallery'}. Please try again.');
+      _analytics.logEvent('kyc_capture_failed', properties: {'side': side.name, 'source': source.name, 'reason': error.toString()});
+    }
+  }
+
+  Future<void> _submitDocuments() async {
+    final front = _frontImage;
+    final back = _backImage;
+
+    if (front == null || back == null) {
+      setState(() => _errorMessage = 'Please capture both sides of your Ghana Card before submitting.');
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final user = await _kycService.uploadGhanaCard(frontImage: front, backImage: back);
+      await _userService.saveUser(user);
+      _analytics.logEvent('kyc_documents_submitted');
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Your Ghana Card has been submitted for review.')),
+      );
+
+      Navigator.of(context).pushAndRemoveUntil(
+        RouteTransitions.fade(const MainScreen()),
+        (route) => false,
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isSubmitting = false;
+        _errorMessage = error.message;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      _analytics.logEvent('kyc_submission_failed', properties: {'reason': error.message});
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isSubmitting = false;
+        _errorMessage = 'We could not upload your documents. Please try again.';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('We could not upload your documents. Please try again.')),
+      );
+      _analytics.logEvent('kyc_submission_failed', properties: {'reason': error.toString()});
+    }
   }
 }

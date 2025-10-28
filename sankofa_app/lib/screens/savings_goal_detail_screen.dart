@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:sankofasave/models/savings_contribution_model.dart';
 import 'package:sankofasave/models/savings_contribution_outcome.dart';
 import 'package:sankofasave/models/savings_goal_model.dart';
+import 'package:sankofasave/models/savings_payout_outcome.dart';
 import 'package:sankofasave/services/savings_service.dart';
 import 'package:sankofasave/ui/components/ui.dart';
 
@@ -23,9 +24,13 @@ class _SavingsGoalDetailScreenState extends State<SavingsGoalDetailScreen> {
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final TextEditingController _collectAmountController = TextEditingController();
+  final TextEditingController _collectNoteController = TextEditingController();
+  final GlobalKey<FormState> _collectFormKey = GlobalKey<FormState>();
   final NumberFormat _currencyFormatter = NumberFormat('#,##0.00');
   bool _isLoadingContributions = true;
   bool _isSubmitting = false;
+  bool _isCollecting = false;
   bool _hasChanges = false;
   final Map<double, DateTime> _milestoneHistory = {};
 
@@ -44,6 +49,8 @@ class _SavingsGoalDetailScreenState extends State<SavingsGoalDetailScreen> {
   void dispose() {
     _amountController.dispose();
     _noteController.dispose();
+    _collectAmountController.dispose();
+    _collectNoteController.dispose();
     super.dispose();
   }
 
@@ -60,6 +67,7 @@ class _SavingsGoalDetailScreenState extends State<SavingsGoalDetailScreen> {
   }
 
   double get _remainingAmount => (_goal.targetAmount - _goal.currentAmount).clamp(0, double.infinity);
+  double get _availableToCollect => _goal.currentAmount.clamp(0, double.infinity);
 
   Future<void> _submitBoost() async {
     if (!_formKey.currentState!.validate()) {
@@ -123,6 +131,55 @@ class _SavingsGoalDetailScreenState extends State<SavingsGoalDetailScreen> {
     }
   }
 
+  Future<void> _submitCollection() async {
+    if (!_collectFormKey.currentState!.validate()) {
+      return;
+    }
+
+    final amount = double.parse(_collectAmountController.text.trim());
+    final note = _collectNoteController.text.trim();
+
+    setState(() => _isCollecting = true);
+
+    final SavingsPayoutOutcome? outcome = await _savingsService.collectFromGoal(
+      goalId: _goal.id,
+      amount: amount,
+      note: note.isEmpty ? 'Savings payout' : note,
+      channel: 'Wallet payout',
+    );
+
+    final contributions = await _savingsService.getContributions(_goal.id);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      if (outcome != null) {
+        _goal = outcome.goal;
+        _hasChanges = true;
+      }
+      _contributions
+        ..clear()
+        ..addAll(contributions);
+      _isCollecting = false;
+      _collectAmountController.clear();
+      _collectNoteController.clear();
+      _recalculateMilestones();
+    });
+
+    if (outcome != null && mounted) {
+      final formattedAmount = _currencyFormatter.format(amount);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('GH₵ $formattedAmount moved back to your wallet.')),
+      );
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to collect savings. Please try again.')),
+      );
+    }
+  }
+
   void _handleBack() {
     if (_hasChanges) {
       Navigator.pop(context, _goal);
@@ -167,9 +224,92 @@ class _SavingsGoalDetailScreenState extends State<SavingsGoalDetailScreen> {
               const SizedBox(height: 24),
               _buildBoostForm(theme),
               const SizedBox(height: 24),
+              _buildCollectForm(theme),
+              const SizedBox(height: 24),
               _buildMilestones(theme),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCollectForm(ThemeData theme) {
+    final available = _availableToCollect;
+    final hasBalance = available > 0;
+    return InfoCard(
+      title: 'Collect Savings',
+      child: Form(
+        key: _collectFormKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              hasBalance
+                  ? 'Move part of your saved balance back into your wallet. Available now: GH₵ ${_currencyFormatter.format(available)}.'
+                  : 'Once you have a saved balance you can move funds back to your wallet from here.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
+            ),
+            const SizedBox(height: 20),
+            TextFormField(
+              controller: _collectAmountController,
+              enabled: hasBalance && !_isCollecting,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+              ],
+              decoration: InputDecoration(
+                labelText: 'Amount to collect (GH₵)',
+                hintText: hasBalance ? _currencyFormatter.format(available) : '0.00',
+                prefixIcon: const Icon(Icons.wallet_rounded),
+              ),
+              validator: (value) {
+                if (!hasBalance) {
+                  return 'No savings available just yet';
+                }
+                final trimmed = value?.trim() ?? '';
+                if (trimmed.isEmpty) {
+                  return 'Enter an amount to move back to your wallet.';
+                }
+                final parsed = double.tryParse(trimmed);
+                if (parsed == null) {
+                  return 'Enter a valid number';
+                }
+                if (parsed <= 0) {
+                  return 'Amount must be greater than zero';
+                }
+                if (parsed > available + 0.001) {
+                  return 'You only have GH₵ ${_currencyFormatter.format(available)} available.';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _collectNoteController,
+              enabled: hasBalance && !_isCollecting,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Add a note (optional)',
+                hintText: 'Explain why you’re collecting these funds',
+                prefixIcon: Icon(Icons.edit_note_outlined),
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: !hasBalance || _isCollecting ? null : _submitCollection,
+              icon: _isCollecting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.savings_outlined),
+              label: Text(_isCollecting ? 'Processing...' : 'Collect savings'),
+            ),
+          ],
         ),
       ),
     );

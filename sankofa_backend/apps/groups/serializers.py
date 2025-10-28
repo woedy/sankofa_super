@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from django.contrib.auth import get_user_model
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import Group, GroupInvite, GroupMembership
+
+UserModel = get_user_model()
 
 
 class GroupInviteSerializer(serializers.ModelSerializer):
@@ -91,3 +95,112 @@ class GroupMembershipSerializer(serializers.ModelSerializer):
         model = GroupMembership
         fields = ("id", "group", "user", "display_name", "joined_at")
         read_only_fields = ("id", "joined_at")
+
+
+class GroupInviteCreateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255)
+    phoneNumber = serializers.CharField(max_length=32)
+
+    def validate_name(self, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise serializers.ValidationError("Invite name is required.")
+        return normalized
+
+    def validate_phoneNumber(self, value: str) -> str:
+        normalized = UserModel.objects.normalize_phone(value)
+        return normalized
+
+
+class GroupCreateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255)
+    description = serializers.CharField(required=False, allow_blank=True)
+    contributionAmount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    frequency = serializers.CharField(required=False, allow_blank=True)
+    location = serializers.CharField(required=False, allow_blank=True)
+    requiresApproval = serializers.BooleanField(default=True)
+    isPublic = serializers.BooleanField(default=False)
+    targetMemberCount = serializers.IntegerField(min_value=1, required=False)
+    startDate = serializers.DateTimeField()
+    payoutOrder = serializers.CharField(required=False, allow_blank=True)
+    invites = GroupInviteCreateSerializer(many=True)
+
+    def validate_invites(self, value: list[dict]) -> list[dict]:
+        if not value:
+            raise serializers.ValidationError("Invite at least one member.")
+
+        normalized: list[dict] = []
+        seen_numbers: set[str] = set()
+
+        for invite in value:
+            phone = invite["phoneNumber"]
+            if phone in seen_numbers:
+                raise serializers.ValidationError("Each invite must use a unique phone number.")
+            seen_numbers.add(phone)
+            normalized.append(invite)
+
+        return normalized
+
+    def create(self, validated_data: dict) -> Group:
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user is None or user.is_anonymous:
+            raise serializers.ValidationError("Authenticated user required to create a group.")
+
+        invites_data = validated_data.pop("invites", [])
+
+        for invite in invites_data:
+            if invite["phoneNumber"] == user.phone_number:
+                raise serializers.ValidationError(
+                    {"invites": "You cannot invite yourself to the group."}
+                )
+
+        target_member_count = validated_data.get("targetMemberCount")
+        if target_member_count is None:
+            target_member_count = len(invites_data) + 1
+        else:
+            minimum_members = len(invites_data) + 1
+            if target_member_count < minimum_members:
+                raise serializers.ValidationError(
+                    {"targetMemberCount": "Must be at least the admin plus all invitees."}
+                )
+
+        start_date = validated_data.pop("startDate")
+        payout_order = validated_data.get("payoutOrder")
+        frequency = validated_data.get("frequency")
+
+        if not payout_order:
+            payout_order = "Rotating"
+            if frequency:
+                payout_order = f"Rotating ({frequency})"
+
+        group = Group.objects.create(
+            name=validated_data["name"],
+            description=validated_data.get("description", ""),
+            frequency=frequency or "",
+            location=validated_data.get("location", ""),
+            requires_approval=validated_data.get("requiresApproval", True),
+            is_public=validated_data.get("isPublic", False),
+            target_member_count=target_member_count,
+            contribution_amount=validated_data["contributionAmount"],
+            cycle_number=1,
+            total_cycles=target_member_count,
+            next_payout_date=start_date,
+            payout_order=payout_order,
+        )
+
+        GroupMembership.objects.create(
+            group=group,
+            user=user,
+            display_name=user.full_name or user.phone_number,
+            joined_at=timezone.now(),
+        )
+
+        for invite_data in invites_data:
+            GroupInvite.objects.create(
+                group=group,
+                name=invite_data["name"],
+                phone_number=invite_data["phoneNumber"],
+            )
+
+        return group

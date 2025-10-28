@@ -173,10 +173,35 @@ class _HomeScreenState extends State<HomeScreen> {
     final user = _user;
     final theme = Theme.of(context);
     final balance = user?.walletBalance ?? 0;
-    final isVerified = user?.kycStatus == 'verified';
+    final requiresKyc = user?.requiresKyc ?? true;
+    final isVerified = user?.isKycApproved ?? false;
+    final isInReview = (user?.isKycInReview ?? false) && !requiresKyc;
+    final statusLabel = user == null
+        ? '—'
+        : isVerified
+            ? 'Verified'
+            : isInReview
+                ? 'In Review'
+                : 'KYC Required';
+    final statusIcon = isVerified
+        ? Icons.verified_user
+        : isInReview
+            ? Icons.hourglass_top
+            : Icons.lock_clock;
+    final statusBackground = isVerified
+        ? Colors.white.withValues(alpha: 0.22)
+        : isInReview
+            ? theme.colorScheme.secondary.withValues(alpha: 0.18)
+            : theme.colorScheme.error.withValues(alpha: 0.18);
+    final statusForeground = isVerified
+        ? Colors.white
+        : isInReview
+            ? theme.colorScheme.onSecondary
+            : theme.colorScheme.error;
     final updatedLabel = user == null
         ? '—'
-        : DateFormat('MMM d • h:mm a').format(user.updatedAt);
+        : DateFormat('MMM d • h:mm a')
+            .format(user.walletUpdatedAt ?? user.updatedAt);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -184,17 +209,15 @@ class _HomeScreenState extends State<HomeScreen> {
         title: 'Wallet Balance',
         value: 'GH₵ ${NumberFormat('#,##0.00').format(balance)}',
         status: WalletSummaryStatus(
-          label: isVerified ? 'Verified' : 'KYC Pending',
-          icon: isVerified ? Icons.verified_user : Icons.lock_clock,
-          backgroundColor: isVerified
-              ? Colors.white.withValues(alpha: 0.22)
-              : theme.colorScheme.error.withValues(alpha: 0.18),
-          foregroundColor: isVerified ? Colors.white : theme.colorScheme.error,
+          label: statusLabel,
+          icon: statusIcon,
+          backgroundColor: statusBackground,
+          foregroundColor: statusForeground,
         ),
         primaryActionLabel: 'Add Funds',
         onPrimaryAction: () => _openProcess(ProcessFlows.deposit),
         trailing: user == null ? null : _buildWalletInfoPanel(user, updatedLabel),
-        gradientColors: isVerified
+        gradientColors: (!requiresKyc)
             ? [theme.colorScheme.primary, theme.colorScheme.secondary]
             : [theme.colorScheme.primaryContainer, theme.colorScheme.primary],
       ),
