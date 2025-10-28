@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:fluttercontactpicker/fluttercontactpicker.dart';
 import 'package:intl/intl.dart';
 import 'package:sankofasave/models/group_draft_model.dart';
 import 'package:sankofasave/models/susu_group_model.dart';
 import 'package:sankofasave/models/user_model.dart';
+import 'package:sankofasave/services/auth_service.dart';
 import 'package:sankofasave/services/group_service.dart';
 import 'package:sankofasave/services/user_service.dart';
 import 'package:sankofasave/ui/components/ui.dart';
+import 'package:sankofasave/utils/ghana_phone_formatter.dart';
 
 class GroupCreationWizardScreen extends StatefulWidget {
   const GroupCreationWizardScreen({super.key});
@@ -28,7 +31,8 @@ class _GroupCreationWizardScreenState
   final TextEditingController _purposeController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _startDateController = TextEditingController();
-  final TextEditingController _memberController = TextEditingController();
+  final TextEditingController _memberNameController = TextEditingController();
+  final TextEditingController _memberPhoneController = TextEditingController();
 
   GroupDraftModel? _draft;
   UserModel? _currentUser;
@@ -36,11 +40,13 @@ class _GroupCreationWizardScreenState
   bool _isLoading = true;
   bool _isSaving = false;
   bool _showDraftRestoredBanner = false;
+  bool _isPickingContact = false;
 
   int _currentStep = 0;
   String _frequency = 'Weekly';
   DateTime? _startDate;
-  final List<String> _memberNames = [];
+  final List<GroupInviteDraft> _invites = [];
+  final AuthService _authService = AuthService();
 
   final List<String> _steps = const [
     'Blueprint',
@@ -74,9 +80,9 @@ class _GroupCreationWizardScreenState
       if (draft.frequency != null) {
         _frequency = draft.frequency!;
       }
-      _memberNames
+      _invites
         ..clear()
-        ..addAll(draft.memberNames);
+        ..addAll(draft.invites);
       _draft = draft;
       _showDraftRestoredBanner = true;
     }
@@ -105,7 +111,7 @@ class _GroupCreationWizardScreenState
       _purposeController.text.trim().isNotEmpty ||
       _amountController.text.trim().isNotEmpty ||
       _startDate != null ||
-      _memberNames.isNotEmpty;
+      _invites.isNotEmpty;
 
   Future<void> _persistDraft() async {
     final now = DateTime.now();
@@ -121,7 +127,7 @@ class _GroupCreationWizardScreenState
       contributionAmount: _parseAmount(),
       frequency: _frequency,
       startDate: _startDate,
-      memberNames: List<String>.from(_memberNames),
+      invites: List<GroupInviteDraft>.from(_invites),
       createdAt: _draft?.createdAt ?? now,
       updatedAt: now,
     );
@@ -164,8 +170,9 @@ class _GroupCreationWizardScreenState
       _purposeController.clear();
       _amountController.clear();
       _startDateController.clear();
-      _memberController.clear();
-      _memberNames.clear();
+      _memberNameController.clear();
+      _memberPhoneController.clear();
+      _invites.clear();
       _startDate = null;
       _frequency = 'Weekly';
       _currentStep = 0;
@@ -184,7 +191,8 @@ class _GroupCreationWizardScreenState
     _purposeController.dispose();
     _amountController.dispose();
     _startDateController.dispose();
-    _memberController.dispose();
+    _memberNameController.dispose();
+    _memberPhoneController.dispose();
     super.dispose();
   }
 
@@ -228,10 +236,16 @@ class _GroupCreationWizardScreenState
     }
 
     if (_currentStep == 2) {
-      if (_memberNames.length < 2) {
+      if (_invites.length < 2) {
         _showMessage(
           'Add at least two invitees so the circle has enough members to rotate payouts.',
         );
+        return;
+      }
+      final hasMissingPhone =
+          _invites.any((invite) => invite.phoneNumber.trim().isEmpty || invite.name.trim().isEmpty);
+      if (hasMissingPhone) {
+        _showMessage('Make sure every invite has a name and phone number.');
         return;
       }
       await _persistDraft();
@@ -252,18 +266,14 @@ class _GroupCreationWizardScreenState
     if (_isSaving) return;
     await _persistDraft();
     final draft = _draft;
-    final owner = _currentUser;
-    if (draft == null || owner == null) {
+    if (draft == null) {
       _showMessage('Something went wrong while loading your account.');
       return;
     }
 
     setState(() => _isSaving = true);
     try {
-      final created = await _groupService.createGroupFromDraft(
-        draft,
-        owner: owner,
-      );
+      final created = await _groupService.createGroupFromDraft(draft);
       if (!mounted) return;
       Navigator.of(context).pop<SusuGroupModel>(created);
     } catch (error) {
@@ -279,23 +289,104 @@ class _GroupCreationWizardScreenState
     );
   }
 
-  void _addMember() {
-    final raw = _memberController.text.trim();
-    if (raw.isEmpty) return;
-    if (_memberNames.any((name) => name.toLowerCase() == raw.toLowerCase())) {
-      _showMessage('That member is already on your invite list.');
+  void _addManualInvite() {
+    final name = _memberNameController.text.trim();
+    final phoneInput = _memberPhoneController.text.trim();
+    if (name.isEmpty || phoneInput.isEmpty) {
+      _showMessage('Enter a name and phone number to add someone.');
+      return;
+    }
+
+    final normalizedPhone = _authService.normalizePhone(phoneInput);
+    _addInvite(
+      GroupInviteDraft(
+        name: name,
+        phoneNumber: normalizedPhone,
+        source: 'manual',
+      ),
+      onSuccess: () {
+        _memberNameController.clear();
+        _memberPhoneController.clear();
+      },
+    );
+  }
+
+  Future<void> _importFromContacts() async {
+    if (_isPickingContact) return;
+    setState(() => _isPickingContact = true);
+    try {
+      final hasPermission = await FlutterContactPicker.hasPermission();
+      if (!hasPermission) {
+        final granted = await FlutterContactPicker.requestPermission();
+        if (granted != true) {
+          _showMessage('Enable contact access to import invites from your address book.');
+          return;
+        }
+      }
+
+      final contact = await FlutterContactPicker.pickPhoneContact();
+      if (contact == null) {
+        return;
+      }
+
+      final phoneNumber = contact.phoneNumber?.number?.trim() ?? '';
+      if (phoneNumber.isEmpty) {
+        _showMessage('The selected contact does not have a phone number.');
+        return;
+      }
+
+      final normalizedPhone = _authService.normalizePhone(phoneNumber);
+      final name = (contact.fullName ?? '').trim();
+
+      _addInvite(
+        GroupInviteDraft(
+          name: name.isNotEmpty ? name : normalizedPhone,
+          phoneNumber: normalizedPhone,
+          source: 'contact',
+        ),
+      );
+    } catch (error) {
+      _showMessage('We couldn\'t open your contacts right now. Please try again.');
+    } finally {
+      if (mounted) {
+        setState(() => _isPickingContact = false);
+      }
+    }
+  }
+
+  void _addInvite(GroupInviteDraft invite, {VoidCallback? onSuccess}) {
+    final normalizedPhone = invite.phoneNumber.trim();
+    if (_invites.any((existing) => existing.phoneNumber == normalizedPhone)) {
+      _showMessage('That phone number is already on your invite list.');
       return;
     }
     setState(() {
-      _memberNames.add(raw);
-      _memberController.clear();
+      _invites.add(invite);
+    });
+    _persistDraft();
+    onSuccess?.call();
+  }
+
+  void _removeInvite(GroupInviteDraft invite) {
+    setState(() {
+      _invites.removeWhere(
+        (entry) =>
+            entry.phoneNumber == invite.phoneNumber && entry.name.toLowerCase() == invite.name.toLowerCase(),
+      );
     });
     _persistDraft();
   }
 
-  void _removeMember(String name) {
-    setState(() => _memberNames.remove(name));
-    _persistDraft();
+  String _formatPhoneForDisplay(String phoneNumber) {
+    if (phoneNumber.trim().isEmpty) {
+      return '';
+    }
+    final normalized = _authService.normalizePhone(phoneNumber);
+    if (normalized.startsWith('+233') && normalized.length >= 4) {
+      final local = '0${normalized.substring(4)}';
+      return GhanaPhoneNumberFormatter.formatForDisplay(local);
+    }
+    return GhanaPhoneNumberFormatter.formatForDisplay(normalized);
   }
 
   Widget _buildStepIndicator() {
@@ -501,6 +592,8 @@ class _GroupCreationWizardScreenState
   Widget _buildInvitesStep() {
     final theme = Theme.of(context);
     final ownerName = _currentUser?.name ?? 'You';
+    final ownerPhone = _currentUser?.phone ?? '';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -522,50 +615,89 @@ class _GroupCreationWizardScreenState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  Chip(
-                    label: Text('$ownerName (Admin)'),
-                    avatar: const Icon(Icons.star_rounded, size: 18),
-                    backgroundColor:
-                        theme.colorScheme.primary.withValues(alpha: 0.12),
-                    labelStyle: theme.textTheme.labelMedium?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  ..._memberNames.map(
-                    (member) => InputChip(
-                      label: Text(member),
-                      onDeleted: () => _removeMember(member),
-                    ),
-                  ),
-                ],
+              _buildInviteSummaryRow(
+                name: ownerName,
+                phone: ownerPhone,
+                leadingIcon: Icons.star_rounded,
+                badgeLabel: 'Admin',
               ),
-              const SizedBox(height: 20),
-              TextField(
-                controller: _memberController,
-                textCapitalization: TextCapitalization.words,
-                decoration: InputDecoration(
-                  labelText: 'Add member name',
-                  hintText: 'e.g. Ama Darko',
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.person_add_alt_1),
-                    onPressed: _addMember,
+              if (_invites.isNotEmpty) const Divider(height: 24),
+              if (_invites.isEmpty)
+                Text(
+                  'No invites yet — add at least two friends to kick things off.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                  ),
+                )
+              else
+                ..._invites.map(
+                  (invite) => _buildInviteSummaryRow(
+                    name: invite.name,
+                    phone: invite.phoneNumber,
+                    source: invite.source,
+                    onRemove: () => _removeInvite(invite),
                   ),
                 ),
-                onSubmitted: (_) => _addMember(),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Tip: Aim for at least 3-6 members so the rotation stays meaningful.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
-              ),
             ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        FilledButton.icon(
+          onPressed: _isPickingContact ? null : _importFromContacts,
+          icon: _isPickingContact
+              ? SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation(theme.colorScheme.onPrimary),
+                  ),
+                )
+              : const Icon(Icons.perm_contact_cal_outlined),
+          label: const Text('Add from contacts'),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Add someone manually',
+          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _memberNameController,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Full name',
+            hintText: 'e.g. Ama Darko',
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _memberPhoneController,
+          keyboardType: TextInputType.phone,
+          inputFormatters: const [
+            FilteringTextInputFormatter.allow(RegExp(r'[0-9+]')),
+            GhanaPhoneNumberFormatter(),
+          ],
+          decoration: const InputDecoration(
+            labelText: 'Phone number',
+            hintText: 'e.g. 024 123 4567',
+          ),
+          onSubmitted: (_) => _addManualInvite(),
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.icon(
+            onPressed: _addManualInvite,
+            icon: const Icon(Icons.person_add_alt_1),
+            label: const Text('Add to invites'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Need at least two invitees so the rotation can begin. You can always add more later.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
           ),
         ),
       ],
@@ -577,6 +709,7 @@ class _GroupCreationWizardScreenState
     final amount = _parseAmount();
     final currency = NumberFormat.currency(locale: 'en_GH', symbol: 'GH₵');
     final ownerName = _currentUser?.name ?? 'You';
+    final ownerPhone = _currentUser?.phone ?? '';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -618,7 +751,7 @@ class _GroupCreationWizardScreenState
               ),
               InfoRow(
                 label: 'Members',
-                value: '${_memberNames.length + 1} people',
+                value: '${_invites.length + 1} people',
               ),
             ],
           ),
@@ -629,9 +762,9 @@ class _GroupCreationWizardScreenState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildMemberLine('$ownerName · Admin'),
+              _buildMemberLine(ownerName, ownerPhone, isAdmin: true),
               const Divider(height: 24),
-              ..._memberNames.map(_buildMemberLine),
+              ..._invites.map((invite) => _buildMemberLine(invite.name, invite.phoneNumber)),
             ],
           ),
         ),
@@ -639,8 +772,9 @@ class _GroupCreationWizardScreenState
     );
   }
 
-  Widget _buildMemberLine(String name) {
+  Widget _buildMemberLine(String name, String phone, {bool isAdmin = false}) {
     final theme = Theme.of(context);
+    final formattedPhone = _formatPhoneForDisplay(phone);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -655,13 +789,162 @@ class _GroupCreationWizardScreenState
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              name,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    if (isAdmin)
+                      Container(
+                        margin: const EdgeInsets.only(left: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'Admin',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                if (formattedPhone.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      formattedPhone,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInviteSummaryRow({
+    required String name,
+    required String phone,
+    IconData? leadingIcon,
+    String? badgeLabel,
+    VoidCallback? onRemove,
+    String? source,
+  }) {
+    final theme = Theme.of(context);
+    final formattedPhone = _formatPhoneForDisplay(phone);
+    final icon = leadingIcon ??
+        (source == 'contact' ? Icons.import_contacts_outlined : Icons.phone_in_talk_outlined);
+    String? sourceLabel;
+    if (source == 'contact') {
+      sourceLabel = 'From contacts';
+    } else if (source == 'manual') {
+      sourceLabel = 'Added manually';
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.12)),
+        boxShadow: [
+          BoxShadow(
+            color: theme.colorScheme.shadow.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: theme.colorScheme.primary, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    if (badgeLabel != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          badgeLabel,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                if (formattedPhone.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      formattedPhone,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+                      ),
+                    ),
+                  ),
+                if (sourceLabel != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      sourceLabel,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (onRemove != null)
+            IconButton(
+              onPressed: onRemove,
+              icon: Icon(
+                Icons.close,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+              tooltip: 'Remove invite',
+            ),
         ],
       ),
     );

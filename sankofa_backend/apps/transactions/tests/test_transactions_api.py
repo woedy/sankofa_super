@@ -9,7 +9,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from sankofa_backend.apps.transactions.models import Transaction
+from sankofa_backend.apps.transactions.models import Transaction, Wallet
 
 User = get_user_model()
 
@@ -18,6 +18,7 @@ class TransactionAPITests(APITestCase):
     def setUp(self) -> None:
         self.user = User.objects.create_user(phone_number="0240000000", full_name="Tester")
         self.client.force_authenticate(self.user)
+        Wallet.objects.ensure_platform()
 
     def _create_transaction(
         self,
@@ -154,3 +155,94 @@ class TransactionAPITests(APITestCase):
         self.assertAlmostEqual(float(payload["totalInflow"]), 800.0)
         self.assertAlmostEqual(float(payload["totalOutflow"]), 200.0)
         self.assertAlmostEqual(float(payload["netCashflow"]), 600.0)
+
+    def test_deposit_endpoint_updates_wallets(self):
+        url = reverse("transactions:transaction-deposit")
+        response = self.client.post(
+            url,
+            {
+                "amount": "150.00",
+                "channel": "MTN MoMo",
+                "reference": "DEP-001",
+                "counterparty": "+233241234567",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        payload = response.json()
+        self.assertEqual(payload["transaction"]["type"], Transaction.TYPE_DEPOSIT)
+
+        user_wallet = Wallet.objects.get(user=self.user)
+        platform_wallet = Wallet.objects.get(is_platform=True)
+        self.assertEqual(user_wallet.balance, Decimal("150.00"))
+        self.assertEqual(platform_wallet.balance, Decimal("150.00"))
+
+    def test_withdraw_endpoint_respects_balance_and_status(self):
+        Wallet.objects.ensure_for_user(self.user)
+        apply_deposit_url = reverse("transactions:transaction-deposit")
+        self.client.post(apply_deposit_url, {"amount": "300.00"}, format="json")
+
+        url = reverse("transactions:transaction-withdraw")
+        response = self.client.post(
+            url,
+            {
+                "amount": "120.00",
+                "status": Transaction.STATUS_SUCCESS,
+                "channel": "MTN MoMo",
+                "reference": "WDR-001",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        payload = response.json()
+        self.assertEqual(payload["transaction"]["status"], Transaction.STATUS_SUCCESS)
+
+        user_wallet = Wallet.objects.get(user=self.user)
+        platform_wallet = Wallet.objects.get(is_platform=True)
+        self.assertEqual(user_wallet.balance, Decimal("180.00"))
+        self.assertEqual(platform_wallet.balance, Decimal("180.00"))
+
+        insufficient = self.client.post(
+            url,
+            {"amount": "500.00", "status": Transaction.STATUS_SUCCESS},
+            format="json",
+        )
+        self.assertEqual(insufficient.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_deposit_accepts_high_precision_fee_values(self):
+        url = reverse("transactions:transaction-deposit")
+        payload = {
+            "amount": 100.0,
+            "fee": 1.2000000000000002,
+            "channel": "MTN MoMo",
+        }
+
+        response = self.client.post(url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        transaction = Transaction.objects.get(transaction_type=Transaction.TYPE_DEPOSIT)
+        self.assertEqual(transaction.fee, Decimal("1.20"))
+
+    def test_withdraw_accepts_destination_and_note(self):
+        Wallet.objects.ensure_for_user(self.user)
+        deposit_url = reverse("transactions:transaction-deposit")
+        self.client.post(deposit_url, {"amount": "250.00"}, format="json")
+
+        url = reverse("transactions:transaction-withdraw")
+        response = self.client.post(
+            url,
+            {
+                "amount": "80.00",
+                "status": Transaction.STATUS_SUCCESS,
+                "destination": "0244000000",
+                "note": "Cash out at Ridge",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        transaction = Transaction.objects.get(transaction_type=Transaction.TYPE_WITHDRAWAL)
+        self.assertEqual(transaction.counterparty, "0244000000")
+        self.assertIn("Cash out at Ridge", transaction.description)

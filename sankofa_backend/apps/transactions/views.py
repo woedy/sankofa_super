@@ -5,14 +5,23 @@ from datetime import datetime, time
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
-from rest_framework import mixins, permissions, viewsets
+from django.core.exceptions import ValidationError as DjangoValidationError
+from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from .models import Transaction
-from .serializers import TransactionSerializer, TransactionSummarySerializer
-from .services import build_transaction_summary
+from .serializers import (
+    DepositRequestSerializer,
+    TransactionSerializer,
+    TransactionSummarySerializer,
+    WalletOperationResponseSerializer,
+    WalletSerializer,
+    WithdrawRequestSerializer,
+)
+from .services import apply_deposit, apply_withdrawal, build_transaction_summary
 
 
 class TransactionPagination(PageNumberPagination):
@@ -85,6 +94,52 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         )
         serializer.is_valid(raise_exception=True)
         return Response(serializer.validated_data)
+
+    @action(methods=["post"], detail=False)
+    def deposit(self, request):
+        serializer = DepositRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            transaction, wallet, platform_wallet = apply_deposit(
+                user=request.user,
+                **serializer.validated_data,
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.message_dict) from exc
+
+        payload = WalletOperationResponseSerializer(
+            instance={
+                "transaction": transaction,
+                "wallet": wallet,
+                "platformWallet": platform_wallet,
+            },
+            context={"request": request},
+        )
+        return Response(payload.data, status=status.HTTP_201_CREATED)
+
+    @action(methods=["post"], detail=False)
+    def withdraw(self, request):
+        serializer = WithdrawRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            transaction, wallet, platform_wallet = apply_withdrawal(
+                user=request.user,
+                **serializer.validated_data,
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.message_dict) from exc
+
+        payload = WalletOperationResponseSerializer(
+            instance={
+                "transaction": transaction,
+                "wallet": wallet,
+                "platformWallet": platform_wallet,
+            },
+            context={"request": request},
+        )
+        return Response(payload.data, status=status.HTTP_201_CREATED)
 
 
 def _parse_query_datetime(value: str, *, is_end: bool) -> datetime | None:
