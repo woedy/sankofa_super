@@ -31,6 +31,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
   final TextEditingController _searchController = TextEditingController();
   int _selectedFilter = 0;
   UserModel? _currentUser;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -40,11 +41,16 @@ class _GroupsScreenState extends State<GroupsScreen> {
   }
 
   Future<void> _loadGroups() async {
+    setState(() {
+      _isLoading = true;
+    });
     final user = await _userService.getCurrentUser();
-    final groups = await _groupService.getGroups();
+    final groups = await _groupService.getGroups(forceRefresh: true);
+    if (!mounted) return;
     setState(() {
       _groups = groups;
       _currentUser = user;
+      _isLoading = false;
     });
     _applyFilters();
   }
@@ -144,30 +150,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: _loadGroups,
-        child: _groups.isEmpty
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.fromLTRB(12, 20, 12, 20),
-                children: [
-                  _buildGroupGuideCard(),
-                  const SizedBox(height: 16),
-                  _buildSearchField(),
-                  const SizedBox(height: 16),
-                  _buildFilters(),
-                  const SizedBox(height: 20),
-                  if (_filteredGroups.isEmpty)
-                    _buildEmptyState()
-                  else
-                    ..._filteredGroups
-                        .map(
-                          (group) => Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _buildGroupCard(group),
-                          ),
-                        )
-                        .toList(),
-                ],
-              ),
+        child: _buildContent(),
       ),
       floatingActionButton: FloatingActionButton.extended(
         heroTag: 'groups_fab',
@@ -176,6 +159,41 @@ class _GroupsScreenState extends State<GroupsScreen> {
         icon: const Icon(Icons.lock_outline, color: Colors.white),
         label: const Text('Create Private Group', style: TextStyle(color: Colors.white)),
       ),
+    );
+  }
+
+  Widget _buildContent() {
+    if (_isLoading) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: 120),
+        children: const [
+          Center(child: CircularProgressIndicator()),
+        ],
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 20, 12, 20),
+      children: [
+        _buildGroupGuideCard(),
+        const SizedBox(height: 16),
+        _buildSearchField(),
+        const SizedBox(height: 16),
+        _buildFilters(),
+        const SizedBox(height: 20),
+        if (_filteredGroups.isEmpty)
+          _buildEmptyState()
+        else
+          ..._filteredGroups
+              .map(
+                (group) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _buildGroupCard(group),
+                ),
+              )
+              .toList(),
+      ],
     );
   }
 

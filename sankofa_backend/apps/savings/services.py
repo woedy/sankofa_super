@@ -9,6 +9,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import SavingsContribution, SavingsGoal
+from sankofa_backend.apps.transactions.models import Transaction, Wallet
+from sankofa_backend.apps.transactions.services import apply_savings_contribution
 
 
 MILESTONE_THRESHOLDS: tuple[Decimal, ...] = (Decimal("0.25"), Decimal("0.5"), Decimal("0.75"))
@@ -28,10 +30,26 @@ def record_contribution(
     amount: Decimal,
     channel: str,
     note: str,
-) -> tuple[SavingsGoal, SavingsContribution, List[SavingsMilestone]]:
+) -> tuple[
+    SavingsGoal,
+    SavingsContribution,
+    List[SavingsMilestone],
+    Transaction,
+    Wallet,
+    Wallet,
+]:
     with transaction.atomic():
         locked_goal = SavingsGoal.objects.select_for_update().get(pk=goal.pk)
         previous_progress = locked_goal.progress
+
+        transaction_record, user_wallet, platform_wallet = apply_savings_contribution(
+            user=user,
+            goal=locked_goal,
+            amount=amount,
+            channel=channel,
+            description=f"Savings contribution to {locked_goal.title}",
+            note=note,
+        )
 
         locked_goal.current_amount = locked_goal.current_amount + amount
         locked_goal.updated_at = timezone.now()
@@ -52,7 +70,7 @@ def record_contribution(
         previous_progress=previous_progress,
         achieved_at=contribution.recorded_at,
     )
-    return locked_goal, contribution, milestones
+    return locked_goal, contribution, milestones, transaction_record, user_wallet, platform_wallet
 
 
 def _calculate_milestones(*, goal: SavingsGoal, previous_progress: float, achieved_at: datetime) -> List[SavingsMilestone]:

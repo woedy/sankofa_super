@@ -3,6 +3,7 @@ from __future__ import annotations
 from rest_framework import serializers
 
 from .models import SavingsContribution, SavingsGoal
+from sankofa_backend.apps.transactions.serializers import TransactionSerializer, WalletSerializer
 
 
 class SavingsGoalSerializer(serializers.ModelSerializer):
@@ -66,3 +67,6 @@ class SavingsContributionOutcomeSerializer(serializers.Serializer):
     goal = SavingsGoalSerializer()
     contribution = SavingsContributionSerializer()
     unlockedMilestones = SavingsMilestoneSerializer(many=True)
+    transaction = TransactionSerializer()
+    wallet = WalletSerializer()
+    platformWallet = WalletSerializer()

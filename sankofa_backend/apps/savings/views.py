@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from .models import SavingsGoal
@@ -43,13 +45,23 @@ class SavingsGoalViewSet(viewsets.ModelViewSet):
         create_serializer = SavingsContributionCreateSerializer(data=request.data)
         create_serializer.is_valid(raise_exception=True)
 
-        updated_goal, contribution, milestones = record_contribution(
-            goal=goal,
-            user=request.user,
-            amount=create_serializer.validated_data["amount"],
-            channel=create_serializer.validated_data.get("channel", "Mobile Money"),
-            note=create_serializer.validated_data.get("note", ""),
-        )
+        try:
+            (
+                updated_goal,
+                contribution,
+                milestones,
+                transaction_record,
+                user_wallet,
+                platform_wallet,
+            ) = record_contribution(
+                goal=goal,
+                user=request.user,
+                amount=create_serializer.validated_data["amount"],
+                channel=create_serializer.validated_data.get("channel", "Mobile Money"),
+                note=create_serializer.validated_data.get("note", ""),
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.message_dict) from exc
 
         milestone_payload = [
             {"threshold": milestone.threshold, "achievedAt": milestone.achieved_at, "message": milestone.message}
@@ -61,6 +73,9 @@ class SavingsGoalViewSet(viewsets.ModelViewSet):
                 "goal": updated_goal,
                 "contribution": contribution,
                 "unlockedMilestones": milestone_payload,
+                "transaction": transaction_record,
+                "wallet": user_wallet,
+                "platformWallet": platform_wallet,
             },
             context=self.get_serializer_context(),
         )
