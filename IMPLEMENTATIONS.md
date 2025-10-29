@@ -149,16 +149,27 @@ This checklist captures the prioritized backlog for bringing the Sankofa backend
 
 ## Phase 3 — Admin Console Integration
 
-- [ ] **Story:** As an admin, I need secure access to manage users, groups, and savings configurations.
+- [x] **Story:** As an admin, I need secure access to manage users, groups, and savings configurations.
   - **Acceptance Criteria:**
     - Admin React app authenticates against backend admin endpoints (role-based access).
     - CRUD endpoints for administrative tasks implemented with proper permission classes.
     - Audit logging captures admin actions.
+  - **Verification Steps:**
+    - `python sankofa_backend/manage.py migrate`
+    - `python sankofa_backend/manage.py test apps.admin_api`
+    - From `sankofa_admin`, run `npm install` (first time) then `npm run dev` and confirm:
+      - Login at `/login` using a staff account created in Django admin.
+      - Navigate to **Users** and approve/suspend a member; verify updates reflect immediately and audit log entries appear via `/api/admin/audit-logs/`.
+      - Open **Groups** to inspect membership and invites sourced from the live API.
+      - Review **Cashflow** queues populated with pending deposits/withdrawals.
 
-- [ ] **Story:** As an operations analyst, I need dashboards and reports within the admin app.
+- [x] **Story:** As an operations analyst, I need dashboards and reports within the admin app.
   - **Acceptance Criteria:**
     - Backend exposes analytics endpoints feeding the admin dashboard widgets.
     - Filters and exports match the UI’s capabilities.
+  - **Verification Steps:**
+    - With the admin console running, confirm the **Dashboard** and **Analytics** views render live metrics from `/api/admin/dashboard/`.
+    - Adjust data filters (transaction type/status) on **Transactions** and ensure the results change accordingly.
 
 ---
 

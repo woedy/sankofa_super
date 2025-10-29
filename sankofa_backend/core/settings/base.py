@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     "sankofa_backend.apps.savings",
     "sankofa_backend.apps.transactions",
     "sankofa_backend.apps.common",
+    "sankofa_backend.apps.admin_api",
 ]
 
 MIDDLEWARE = [
