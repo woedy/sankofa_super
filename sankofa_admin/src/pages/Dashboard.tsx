@@ -7,7 +7,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   Info,
-  RefreshCcw,
+  Bell,
+  TrendingUp,
 } from 'lucide-react';
 import {
   LineChart,
@@ -28,8 +29,6 @@ import { useQuery } from '@tanstack/react-query';
 
 import KPICard from '@/components/dashboard/KPICard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuthorizedApi } from '@/lib/auth';
 import type { DashboardMetrics } from '@/lib/types';
@@ -70,15 +69,37 @@ const toMonthLabel = (value: string) => {
   return parsed.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
 };
 
+const toTimeLabel = (value: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const buildTrendLabel = (
+  current: number,
+  previous: number,
+  formatter: (value: number) => string,
+): { change: string; trend: 'up' | 'down' } => {
+  const delta = current - previous;
+  const direction = delta >= 0 ? 'up' : 'down';
+  const absolute = Math.abs(delta);
+  const symbol = delta >= 0 ? '↑' : '↓';
+  return {
+    trend: direction,
+    change: `${symbol} ${formatter(absolute)} vs last week`,
+  };
+};
+
 export default function Dashboard() {
   const api = useAuthorizedApi();
-  const {
-    data,
-    isLoading,
-    isError,
-    refetch,
-    isFetching,
-  } = useQuery<DashboardMetrics>({
+  const { data, isLoading, isError } = useQuery<DashboardMetrics>({
     queryKey: ['dashboard-metrics'],
     queryFn: () => api('/api/admin/dashboard/'),
     staleTime: 60_000,
@@ -93,7 +114,8 @@ export default function Dashboard() {
   }, [data?.daily_volume]);
 
   const memberGrowthSeries = useMemo(() => {
-    if (!data?.member_growth) return [] as Array<{ month: string; newMembers: number; totalMembers: number }>;
+    if (!data?.member_growth)
+      return [] as Array<{ month: string; newMembers: number; totalMembers: number }>;
     return data.member_growth.map((entry) => ({
       month: toMonthLabel(entry.month),
       newMembers: entry.new_members,
@@ -102,7 +124,8 @@ export default function Dashboard() {
   }, [data?.member_growth]);
 
   const contributionMix = useMemo(() => {
-    if (!data?.contribution_mix) return [] as Array<{ name: string; value: number; fill: string }>;
+    if (!data?.contribution_mix)
+      return [] as Array<{ name: string; value: number; fill: string }>;
     return data.contribution_mix.map((entry) => ({
       name: entry.type,
       value: Number(entry.amount ?? 0),
@@ -111,244 +134,296 @@ export default function Dashboard() {
   }, [data?.contribution_mix]);
 
   const upcomingPayouts = useMemo(() => {
-    if (!data?.upcoming_payouts) return [] as Array<{ id: string; reference: string | null; scheduled_for: string; group: string | null; amount: number }>;
+    if (!data?.upcoming_payouts)
+      return [] as Array<{
+        id: string;
+        reference: string | null;
+        scheduledFor: string;
+        group: string | null;
+        amount: number;
+        description: string;
+        user: string | null;
+        status: string;
+      }>;
     return data.upcoming_payouts.map((payout) => ({
       id: payout.id,
       reference: payout.reference,
-      scheduled_for: new Date(payout.scheduled_for).toLocaleString('en-GB', {
-        day: '2-digit',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
+      scheduledFor: toTimeLabel(payout.scheduled_for),
       group: payout.group,
       amount: Number(payout.amount ?? 0),
+      description: payout.description,
+      user: payout.user,
+      status: payout.status,
     }));
   }, [data?.upcoming_payouts]);
 
-  const notifications = useMemo(() => data?.notifications ?? [], [data?.notifications]);
+  const notifications = useMemo(
+    () =>
+      (data?.notifications ?? []).map((notification) => ({
+        ...notification,
+        time: toTimeLabel(notification.created_at),
+      })),
+    [data?.notifications],
+  );
 
-  const renderContent = () => {
-    if (isLoading && !data) {
-      return (
-        <div className="space-y-6">
-          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <Skeleton key={index} className="h-40 w-full rounded-xl" />
-            ))}
-          </div>
-          <Skeleton className="h-[420px] w-full rounded-xl" />
-          <Skeleton className="h-[420px] w-full rounded-xl" />
-        </div>
-      );
-    }
-
-    if (isError) {
-      return (
-        <Card className="shadow-custom-md">
-          <CardHeader>
-            <CardTitle>Unable to load metrics</CardTitle>
-            <CardDescription>Please try refreshing the dashboard.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={() => refetch()} disabled={isFetching}>
-              <RefreshCcw className="mr-2 h-4 w-4" />
-              Retry
-            </Button>
-          </CardContent>
-        </Card>
-      );
-    }
-
-    const kpis = data?.kpis ?? {
-      active_members: 0,
-      total_wallet_balance: 0,
-      pending_payouts: 0,
-      pending_withdrawals: 0,
-    };
-
+  if (isLoading && !data) {
     return (
       <div className="space-y-6">
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-          <KPICard title="Active Members" value={formatNumber(kpis.active_members)} icon={Users} />
-          <KPICard title="Total Wallet Float" value={formatCurrency(kpis.total_wallet_balance)} icon={PiggyBank} />
-          <KPICard title="Pending Payouts" value={formatNumber(kpis.pending_payouts)} icon={Wallet} />
-          <KPICard title="Pending Withdrawals" value={formatNumber(kpis.pending_withdrawals)} icon={ShieldAlert} />
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="h-40 w-full rounded-xl" />
+          ))}
         </div>
+        <Skeleton className="h-[360px] w-full rounded-xl" />
+        <Skeleton className="h-[360px] w-full rounded-xl" />
+        <Skeleton className="h-[280px] w-full rounded-xl" />
+      </div>
+    );
+  }
 
-        <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
-          <Card className="shadow-custom-md">
-            <CardHeader className="flex flex-row items-start justify-between gap-4">
-              <div>
-                <CardTitle>7-day Cashflow Volume</CardTitle>
-                <CardDescription>Successful transactions processed in the last month</CardDescription>
-              </div>
-              <Button variant="outline" size="icon" onClick={() => refetch()} disabled={isFetching} aria-label="Refresh metrics">
-                <RefreshCcw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-              </Button>
-            </CardHeader>
-            <CardContent className="h-[360px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={dailyTransactions}>
-                  <defs>
-                    <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="4 4" className="stroke-border" />
-                  <XAxis dataKey="date" className="text-xs text-muted-foreground" />
-                  <YAxis className="text-xs text-muted-foreground" />
-                  <Tooltip
-                    formatter={(value: number) => formatCurrency(value)}
-                    labelStyle={{ color: 'hsl(var(--muted-foreground))' }}
-                    contentStyle={{
-                      backgroundColor: 'hsl(var(--card))',
-                      border: '1px solid hsl(var(--border))',
-                      borderRadius: '8px',
-                    }}
-                  />
-                  <Area type="monotone" dataKey="volume" stroke="hsl(var(--primary))" fill="url(#volumeGradient)" strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+  if (isError || !data) {
+    return (
+      <Card className="shadow-custom-md">
+        <CardHeader>
+          <CardTitle>Unable to load metrics</CardTitle>
+          <CardDescription>Please try again shortly.</CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
 
-          <Card className="shadow-custom-md">
-            <CardHeader>
-              <CardTitle>Contribution Mix</CardTitle>
-              <CardDescription>Share of transaction volume by type</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col items-center justify-center">
-              <ResponsiveContainer width="100%" height={280}>
-                <PieChart>
-                  <Pie dataKey="value" data={contributionMix} innerRadius={60} outerRadius={100} paddingAngle={4}>
-                    {contributionMix.map((entry, index) => (
-                      <Cell key={`${entry.name}-${index}`} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value: number, name: string) => [formatCurrency(value as number), name]}
-                    contentStyle={{
-                      backgroundColor: 'hsl(var(--card))',
-                      border: '1px solid hsl(var(--border))',
-                      borderRadius: '8px',
-                    }}
-                  />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="mt-6 w-full space-y-2">
-                {contributionMix.map((entry) => (
-                  <div key={entry.name} className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-foreground">{entry.name}</span>
-                    <span className="text-muted-foreground">{formatCurrency(entry.value)}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+  const kpiConfig = [
+    {
+      key: 'active_members',
+      title: 'Active Members',
+      icon: Users,
+      formatter: formatNumber,
+    },
+    {
+      key: 'total_wallet_balance',
+      title: 'Total Savings Wallets',
+      icon: PiggyBank,
+      formatter: formatCurrency,
+    },
+    {
+      key: 'pending_payouts',
+      title: 'Pending Payouts',
+      icon: Wallet,
+      formatter: formatNumber,
+    },
+    {
+      key: 'pending_withdrawals',
+      title: 'Pending Withdrawals',
+      icon: ShieldAlert,
+      formatter: formatNumber,
+    },
+  ] as const;
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card className="shadow-custom-md">
-            <CardHeader>
-              <CardTitle>Member Growth</CardTitle>
-              <CardDescription>New members joining the platform</CardDescription>
-            </CardHeader>
-            <CardContent className="h-[360px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={memberGrowthSeries}>
-                  <CartesianGrid strokeDasharray="4 4" className="stroke-border" />
-                  <XAxis dataKey="month" className="text-xs text-muted-foreground" />
-                  <YAxis className="text-xs text-muted-foreground" />
-                  <Tooltip
-                    formatter={(value: number, name: string) =>
-                      name === 'newMembers' ? [`${value} new`, 'New Members'] : [`${value}`, 'Total Members']
-                    }
-                    contentStyle={{
-                      backgroundColor: 'hsl(var(--card))',
-                      border: '1px solid hsl(var(--border))',
-                      borderRadius: '8px',
-                    }}
-                  />
-                  <Legend formatter={(value) => (value === 'newMembers' ? 'New Members' : 'Total Members')} />
-                  <Line type="monotone" dataKey="newMembers" stroke="hsl(var(--secondary))" strokeWidth={3} dot />
-                  <Line type="monotone" dataKey="totalMembers" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+        {kpiConfig.map(({ key, title, icon, formatter }) => {
+          const metrics = data.kpis[key] ?? { current: 0, previous: 0 };
+          const trend = buildTrendLabel(metrics.current, metrics.previous, formatter);
+          return (
+            <KPICard
+              key={key}
+              title={title}
+              value={formatter(metrics.current)}
+              change={trend.change}
+              trend={trend.trend}
+              icon={icon}
+            />
+          );
+        })}
+      </div>
 
-          <Card className="shadow-custom-md">
-            <CardHeader>
-              <CardTitle>Upcoming Payouts</CardTitle>
-              <CardDescription>Groups with payouts scheduled this week</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {upcomingPayouts.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No payouts scheduled for the next few days.</p>
-              ) : (
-                <ScrollArea className="h-[300px]">
-                  <div className="space-y-3 pr-4">
-                    {upcomingPayouts.map((payout) => (
-                      <div key={payout.id} className="rounded-lg border border-border p-4">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="font-semibold text-foreground">{payout.group ?? 'Direct payout'}</span>
-                          <span className="text-muted-foreground">{payout.scheduled_for}</span>
-                        </div>
-                        <p className="mt-2 text-sm text-muted-foreground">Reference: {payout.reference ?? 'N/A'}</p>
-                        <p className="text-sm font-semibold text-primary">{formatCurrency(payout.amount)}</p>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card className="shadow-custom-md">
+      <div className="grid gap-6 xl:grid-cols-7">
+        <Card className="xl:col-span-4 shadow-custom-md">
           <CardHeader>
-            <CardTitle>Operational Alerts</CardTitle>
-            <CardDescription>Cashflow events and tasks requiring attention</CardDescription>
+            <CardTitle>Daily Transactions</CardTitle>
+            <CardDescription>Aggregate successful volume across the last 7 days</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {notifications.map((notification) => {
-                const meta = notificationMeta[notification.level];
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={dailyTransactions}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis dataKey="date" className="text-muted-foreground" />
+                <YAxis className="text-muted-foreground" />
+                <Tooltip
+                  formatter={(value: number) => formatCurrency(Number(value))}
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                  }}
+                />
+                <Line type="monotone" dataKey="volume" stroke="hsl(var(--primary))" strokeWidth={2} dot />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card className="xl:col-span-3 shadow-custom-md">
+          <CardHeader>
+            <CardTitle>Member Growth</CardTitle>
+            <CardDescription>New joiners and cumulative totals per month</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <AreaChart data={memberGrowthSeries}>
+                <defs>
+                  <linearGradient id="colorMembers" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.8} />
+                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.1} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis dataKey="month" className="text-muted-foreground" />
+                <YAxis className="text-muted-foreground" allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                  }}
+                  formatter={(value: number, name) => {
+                    if (name === 'newMembers') {
+                      return [value, 'New Members'];
+                    }
+                    return [value, 'Total Members'];
+                  }}
+                />
+                <Legend />
+                <Area
+                  type="monotone"
+                  dataKey="totalMembers"
+                  stroke="hsl(var(--primary))"
+                  fill="url(#colorMembers)"
+                  name="Total Members"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="newMembers"
+                  stroke="hsl(var(--success))"
+                  strokeWidth={2}
+                  dot={{ fill: 'hsl(var(--success))', r: 4 }}
+                  name="New Members"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-7">
+        <Card className="xl:col-span-3 shadow-custom-md">
+          <CardHeader>
+            <CardTitle>Contribution Mix</CardTitle>
+            <CardDescription>Volume share by transaction type</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={contributionMix}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={50}
+                  outerRadius={90}
+                  paddingAngle={4}
+                  dataKey="value"
+                >
+                  {contributionMix.map((entry) => (
+                    <Cell key={entry.name} fill={entry.fill} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(value: number, name: string) => [formatCurrency(Number(value)), name]}
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                  }}
+                />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card className="xl:col-span-4 shadow-custom-md">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Bell className="h-5 w-5 text-primary" />
+              <CardTitle>Recent Notifications</CardTitle>
+            </div>
+            <CardDescription>Latest platform activities and alerts</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {notifications.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No recent notifications.</p>
+            ) : (
+              notifications.map((notification) => {
+                const meta =
+                  notificationMeta[notification.level as keyof typeof notificationMeta] ?? notificationMeta.info;
                 const Icon = meta.icon;
                 return (
                   <div
                     key={notification.id}
-                    className={`rounded-lg border border-border p-4 ${meta.background} space-y-2`}
+                    className="flex items-start gap-3 rounded-lg border border-border p-4 transition-smooth hover:bg-muted/50"
                   >
-                    <div className="flex items-center gap-2">
-                      <div className="rounded-full bg-background p-2 shadow-sm">
-                        <Icon className={`h-4 w-4 ${meta.tone}`} />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">{notification.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(notification.created_at).toLocaleString('en-GB', {
-                            day: '2-digit',
-                            month: 'short',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </p>
-                      </div>
+                    <div className={`rounded-full ${meta.background} p-2`}>
+                      <Icon className={`h-4 w-4 ${meta.tone}`} />
                     </div>
-                    <p className="text-sm text-muted-foreground">{notification.message}</p>
+                    <div className="flex-1 space-y-1">
+                      <p className="text-sm font-semibold text-foreground">{notification.title}</p>
+                      <p className="text-sm text-muted-foreground">{notification.message}</p>
+                      <p className="text-xs text-muted-foreground">{notification.time}</p>
+                    </div>
                   </div>
                 );
-              })}
-            </div>
+              })
+            )}
           </CardContent>
         </Card>
       </div>
-    );
-  };
 
-  return renderContent();
+      <Card className="shadow-custom-md">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-primary" />
+            <CardTitle>Upcoming Payout Watchlist</CardTitle>
+          </div>
+          <CardDescription>Monitor pending disbursements aligned with admin payout approvals</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {upcomingPayouts.length === 0 ? (
+            <p className="text-sm text-muted-foreground">All payouts are settled for the current cycle.</p>
+          ) : (
+            <div className="space-y-4">
+              {upcomingPayouts.map((payout) => (
+                <div
+                  key={payout.id}
+                  className="flex flex-col gap-1 rounded-lg border border-border p-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-foreground">{payout.description}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Reference: {payout.reference ?? 'N/A'} • {payout.group ?? 'Unassigned'} • {payout.user ?? 'Member'}
+                    </p>
+                    <p className="text-xs text-muted-foreground capitalize">Status: {payout.status}</p>
+                  </div>
+                  <div className="space-y-1 text-sm text-muted-foreground sm:text-right">
+                    <p>{formatCurrency(payout.amount)}</p>
+                    <p>Scheduled: {payout.scheduledFor}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
 }

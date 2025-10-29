@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sankofasave/controllers/theme_controller.dart';
 import 'package:sankofasave/models/user_model.dart';
+import 'package:sankofasave/screens/dispute_center_screen.dart';
 import 'package:sankofasave/screens/splash_screen.dart';
 import 'package:sankofasave/screens/support_center_screen.dart';
 import 'package:sankofasave/services/user_service.dart';
@@ -306,6 +307,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   'Download a snapshot of your recent deposits and withdrawals.',
                               onTap: () =>
                                   _showSnack('Cashflow receipts will ship with the export update.'),
+                            ),
+                            const Divider(height: 24),
+                            _settingTile(
+                              icon: Icons.forum_outlined,
+                              title: 'Disputes',
+                              subtitle: 'Report an issue or track existing cases with support.',
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => const DisputeCenterScreen(),
+                                  ),
+                                );
+                              },
                             ),
                             const Divider(height: 24),
                             _settingTile(

@@ -164,6 +164,25 @@ This checklist captures the prioritized backlog for bringing the Sankofa backend
       - Review **Cashflow** queues populated with pending deposits/withdrawals.
       - Restart the Django dev server (or trigger an auto-reload) and verify the admin session stays authenticated without forcing a logout.
 
+- [x] **Story:** As an admin, I need the dispute desk powered by live data so I can triage member issues without leaving the console.
+  - **Acceptance Criteria:**
+    - Django `disputes` app models cases, SLA metadata, timeline messages, attachments, and reusable support articles.
+    - Member APIs allow authenticated users to open disputes and append timeline entries; admin endpoints expose list/detail with filtering plus knowledge base access.
+    - The React admin disputes view hydrates from these endpoints (no mock data) and surfaces SLA status, attachments, and related knowledge base links.
+    - Automated tests cover dispute creation for members and staff list/detail retrieval.
+  - **Verification Steps:**
+    - `python sankofa_backend/manage.py migrate`
+    - `python sankofa_backend/manage.py test apps.disputes apps.admin_api`
+    - `npm --prefix sankofa_admin run dev`, sign in as staff, and open **Disputes** to confirm cases load immediately and the support article sidebar mirrors backend data.
+  - **Member Reporting Flow:**
+    1. Acquire credentials via the OTP-based auth endpoints:
+       - `POST /api/auth/register/` to create an account, which triggers an OTP delivery.
+       - `POST /api/auth/otp/verify/` with the received code to exchange for access/refresh tokens used on subsequent calls.
+    2. Submit a dispute from the app by calling `POST /api/disputes/disputes/` with the case metadata (`title`, `description`, `category`, `severity`, `priority`, `channel`, optional `group`) and an `initial_message` body representing the first timeline entry.
+    3. Use `GET /api/disputes/disputes/` (or retrieve by ID) to review the dispute details, which includes computed SLA state, the full message timeline, and any attachments/knowledge base links.
+    4. Append follow-up messages with `POST /api/disputes/disputes/{id}/messages/` when the member needs to provide new information or respond to support.
+    5. **Flutter client entry point:** From the Profile tab, open **Disputes** under Account tools (or tap **Open a dispute** inside Support center) to launch the new dispute inbox. Submit the form to create a case, then send a follow-up message; both actions should appear immediately in the timeline without restarting the app.
+
 - [x] **Story:** As an operations analyst, I need dashboards and reports within the admin app.
   - **Acceptance Criteria:**
     - Backend exposes analytics endpoints feeding the admin dashboard widgets.
