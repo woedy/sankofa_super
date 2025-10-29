@@ -22,4 +22,5 @@ urlpatterns = [
         "api/transactions/",
         include(("sankofa_backend.apps.transactions.urls", "transactions"), namespace="transactions"),
     ),
+    path("api/disputes/", include(("sankofa_backend.apps.disputes.urls", "disputes"), namespace="disputes")),
 ]

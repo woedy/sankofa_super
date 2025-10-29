@@ -1,10 +1,11 @@
 export interface DashboardMetrics {
-  kpis: {
-    active_members: number;
-    total_wallet_balance: number;
-    pending_payouts: number;
-    pending_withdrawals: number;
-  };
+  kpis: Record<
+    string,
+    {
+      current: number;
+      previous: number;
+    }
+  >;
   daily_volume: Array<{ date: string; volume: string }>;
   contribution_mix: Array<{ type: string; amount: string }>;
   member_growth: Array<{ month: string; new_members: number; total_members: number }>;
@@ -14,6 +15,9 @@ export interface DashboardMetrics {
     scheduled_for: string;
     amount: string;
     group: string | null;
+    user: string | null;
+    description: string;
+    status: string;
   }>;
   notifications: Array<{ id: string; title: string; level: "alert" | "warning" | "success" | "info"; message: string; created_at: string }>;
 }
