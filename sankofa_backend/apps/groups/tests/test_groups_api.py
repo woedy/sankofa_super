@@ -74,7 +74,7 @@ class GroupAPITests(APITestCase):
 
     def test_join_public_group_adds_membership(self):
         other_user = User.objects.create_user(phone_number="0241111111", full_name="Kwame")
-        group = self._create_group(name="Open Circle", is_public=True)
+        group = self._create_group(name="Open Circle", is_public=True, requires_approval=False)
         GroupMembership.objects.create(group=group, user=other_user, display_name="Kwame")
 
         url = reverse("groups:group-join", kwargs={"pk": group.pk})
@@ -83,6 +83,24 @@ class GroupAPITests(APITestCase):
         data = response.json()
         self.assertIn(str(self.user.id), data["memberIds"])
         self.assertEqual(group.memberships.count(), 2)
+
+    def test_join_public_group_requiring_approval_creates_pending_invite(self):
+        group = self._create_group(name="Guarded Circle", is_public=True, requires_approval=True)
+
+        url = reverse("groups:group-join", kwargs={"pk": group.pk})
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        data = response.json()
+
+        group.refresh_from_db()
+        self.assertNotIn(str(self.user.id), data["memberIds"])
+        self.assertFalse(group.memberships.filter(user=self.user).exists())
+
+        invite = group.invites.get(phone_number=self.user.phone_number)
+        self.assertEqual(invite.status, GroupInvite.STATUS_PENDING)
+        self.assertEqual(invite.name, self.user.full_name)
+        self.assertIsNone(invite.responded_at)
+        self.assertEqual(invite.reminder_count, 0)
 
     def test_join_fails_when_group_full(self):
         group = self._create_group(name="Full Circle", is_public=True, target_member_count=1)

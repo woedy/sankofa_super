@@ -13,6 +13,8 @@ from .models import Group, GroupInvite, GroupInviteReminder, GroupMembership
 from .realtime import broadcast_group_event
 from .serializers import GroupCreateSerializer, GroupSerializer
 
+User = get_user_model()
+
 
 class GroupViewSet(viewsets.ModelViewSet):
     serializer_class = GroupSerializer
@@ -56,14 +58,65 @@ class GroupViewSet(viewsets.ModelViewSet):
             return Response({"detail": "This group is already at capacity."}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
-            membership, created = GroupMembership.objects.select_for_update().get_or_create(
-                group=group,
-                user=request.user,
-                defaults={"display_name": request.user.full_name or request.user.phone_number},
+            membership = (
+                GroupMembership.objects.select_for_update()
+                .filter(group=group, user=request.user)
+                .first()
             )
-            if created:
-                group.updated_at = timezone.now()
-                group.save(update_fields=["updated_at"])
+            created = False
+
+            if membership is None:
+                if group.requires_approval:
+                    display_name = request.user.full_name or request.user.phone_number
+                    normalized_phone = User.objects.normalize_phone(request.user.phone_number)
+                    kyc_status = (request.user.kyc_status or "").lower()
+                    kyc_completed = kyc_status in {
+                        "verified",
+                        "approved",
+                        "completed",
+                        "submitted",
+                        "under_review",
+                        "in_review",
+                        "review_pending",
+                    }
+
+                    invite_qs = group.invites.select_for_update().filter(phone_number=normalized_phone)
+                    invite = invite_qs.first()
+                    if invite:
+                        invite.name = display_name
+                        invite.status = GroupInvite.STATUS_PENDING
+                        invite.kyc_completed = kyc_completed
+                        invite.responded_at = None
+                        invite.last_reminded_at = None
+                        invite.reminder_count = 0
+                        invite.sent_at = timezone.now()
+                        invite.save(
+                            update_fields=[
+                                "name",
+                                "status",
+                                "kyc_completed",
+                                "responded_at",
+                                "last_reminded_at",
+                                "reminder_count",
+                                "sent_at",
+                            ]
+                        )
+                    else:
+                        group.invites.create(
+                            name=display_name,
+                            phone_number=normalized_phone,
+                            status=GroupInvite.STATUS_PENDING,
+                            kyc_completed=kyc_completed,
+                        )
+                else:
+                    membership, created = GroupMembership.objects.select_for_update().get_or_create(
+                        group=group,
+                        user=request.user,
+                        defaults={"display_name": request.user.full_name or request.user.phone_number},
+                    )
+                    if created:
+                        group.updated_at = timezone.now()
+                        group.save(update_fields=["updated_at"])
 
         refreshed = self._get_group(group.pk)
         serializer = self.get_serializer(refreshed)
@@ -80,6 +133,9 @@ class GroupViewSet(viewsets.ModelViewSet):
                     },
                 },
             )
+
+        if group.requires_approval and not created and membership is None:
+            return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
