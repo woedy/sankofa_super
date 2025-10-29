@@ -520,10 +520,13 @@ class UpcomingPayoutSerializer(serializers.Serializer):
     scheduled_for = serializers.DateTimeField()
     amount = serializers.DecimalField(max_digits=14, decimal_places=2)
     group = serializers.CharField(allow_null=True, allow_blank=True)
+    user = serializers.CharField(allow_null=True, allow_blank=True)
+    description = serializers.CharField(allow_blank=True)
+    status = serializers.CharField()
 
 
 class DashboardMetricsSerializer(serializers.Serializer):
-    kpis = serializers.DictField(child=serializers.FloatField())
+    kpis = serializers.DictField(child=serializers.DictField(child=serializers.FloatField()))
     daily_volume = DailyVolumePointSerializer(many=True)
     contribution_mix = ContributionSliceSerializer(many=True)
     member_growth = MemberGrowthPointSerializer(many=True)

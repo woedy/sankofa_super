@@ -146,6 +146,14 @@ class AdminApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("kpis", response.data)
         self.assertIn("active_members", response.data["kpis"])
+        self.assertIn("current", response.data["kpis"]["active_members"])
+        self.assertIn("previous", response.data["kpis"]["active_members"])
+        self.assertIn("notifications", response.data)
+        self.assertIn("upcoming_payouts", response.data)
+        if response.data["upcoming_payouts"]:
+            sample = response.data["upcoming_payouts"][0]
+            self.assertIn("description", sample)
+            self.assertIn("status", sample)
 
     def test_groups_list_includes_membership_and_invite_counts(self):
         self.authenticate()

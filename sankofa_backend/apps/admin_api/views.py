@@ -425,22 +425,55 @@ class DashboardMetricsView(APIView):
     def get(self, request, *args, **kwargs):
         now = timezone.now()
         start_of_week = now - timedelta(days=6)
+        week_start_date = start_of_week.date()
+        previous_week_end = week_start_date - timedelta(days=1)
         recent_transactions = Transaction.objects.filter(occurred_at__date__gte=now.date() - timedelta(days=30))
 
         active_members = User.objects.filter(is_active=True).count()
+        previous_active_members = User.objects.filter(is_active=True, date_joined__date__lte=previous_week_end).count()
+
         total_wallet_balance = (
             Wallet.objects.aggregate(
                 total=Coalesce(Sum("balance"), Value(Decimal("0.00")))
             )["total"]
         )
-        pending_payouts = Transaction.objects.filter(
+
+        week_transactions = Transaction.objects.filter(
+            occurred_at__date__gte=week_start_date,
+            occurred_at__date__lte=now.date(),
+            status=Transaction.STATUS_SUCCESS,
+        )
+        inflow_total = (
+            week_transactions.filter(transaction_type__in=Transaction.INFLOW_TYPES)
+            .aggregate(total=Coalesce(Sum("amount"), Value(Decimal("0.00"))))
+            ["total"]
+        )
+        outflow_total = (
+            week_transactions.filter(transaction_type__in=Transaction.OUTFLOW_TYPES)
+            .aggregate(total=Coalesce(Sum("amount"), Value(Decimal("0.00"))))
+            ["total"]
+        )
+        current_total_balance = total_wallet_balance or Decimal("0.00")
+        inflow_total = inflow_total or Decimal("0.00")
+        outflow_total = outflow_total or Decimal("0.00")
+        previous_total_wallet_balance = max(
+            Decimal("0.00"),
+            Decimal(current_total_balance) - Decimal(inflow_total) + Decimal(outflow_total),
+        )
+
+        pending_payouts_qs = Transaction.objects.filter(
             transaction_type=Transaction.TYPE_PAYOUT,
             status=Transaction.STATUS_PENDING,
-        ).count()
-        pending_withdrawals = Transaction.objects.filter(
+        )
+        pending_payouts = pending_payouts_qs.count()
+        previous_pending_payouts = pending_payouts_qs.filter(occurred_at__date__lt=week_start_date).count()
+
+        pending_withdrawals_qs = Transaction.objects.filter(
             transaction_type=Transaction.TYPE_WITHDRAWAL,
             status=Transaction.STATUS_PENDING,
-        ).count()
+        )
+        pending_withdrawals = pending_withdrawals_qs.count()
+        previous_pending_withdrawals = pending_withdrawals_qs.filter(occurred_at__date__lt=week_start_date).count()
 
         daily_volume_qs = (
             recent_transactions.exclude(status=Transaction.STATUS_FAILED)
@@ -487,12 +520,17 @@ class DashboardMetricsView(APIView):
                 "scheduled_for": transaction.occurred_at,
                 "amount": transaction.amount,
                 "group": transaction.group.name if transaction.group else None,
+                "user": transaction.user.full_name or transaction.user.phone_number,
+                "description": transaction.description,
+                "status": transaction.status,
             }
             for transaction in Transaction.objects.filter(
                 transaction_type=Transaction.TYPE_PAYOUT,
                 status__in=[Transaction.STATUS_PENDING, Transaction.STATUS_SUCCESS],
                 occurred_at__gte=start_of_week,
-            ).order_by("occurred_at")[:10]
+            )
+            .select_related("group", "user")
+            .order_by("occurred_at")[:10]
         ]
 
         notifications = []
@@ -529,10 +567,22 @@ class DashboardMetricsView(APIView):
 
         payload = {
             "kpis": {
-                "active_members": active_members,
-                "total_wallet_balance": float(total_wallet_balance),
-                "pending_payouts": pending_payouts,
-                "pending_withdrawals": pending_withdrawals,
+                "active_members": {
+                    "current": float(active_members),
+                    "previous": float(previous_active_members),
+                },
+                "total_wallet_balance": {
+                    "current": float(total_wallet_balance),
+                    "previous": float(previous_total_wallet_balance),
+                },
+                "pending_payouts": {
+                    "current": float(pending_payouts),
+                    "previous": float(previous_pending_payouts),
+                },
+                "pending_withdrawals": {
+                    "current": float(pending_withdrawals),
+                    "previous": float(previous_pending_withdrawals),
+                },
             },
             "daily_volume": daily_volume,
             "contribution_mix": contribution_mix,
