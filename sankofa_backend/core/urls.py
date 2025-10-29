@@ -12,6 +12,10 @@ urlpatterns = [
     path("api/health/", health_check, name="health-check"),
     path("api/auth/", include(("sankofa_backend.apps.accounts.urls", "accounts"), namespace="accounts")),
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token-refresh"),
+    path(
+        "api/admin/",
+        include(("sankofa_backend.apps.admin_api.urls", "admin_api"), namespace="admin-api"),
+    ),
     path("api/groups/", include(("sankofa_backend.apps.groups.urls", "groups"), namespace="groups")),
     path("api/savings/", include(("sankofa_backend.apps.savings.urls", "savings"), namespace="savings")),
     path(

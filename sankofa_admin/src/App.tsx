@@ -3,7 +3,6 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useState } from "react";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Users from "./pages/Users";
@@ -16,6 +15,7 @@ import Cashflow from "./pages/Cashflow";
 import Sidebar from "./components/layout/Sidebar";
 import Header from "./components/layout/Header";
 import NotFound from "./pages/NotFound";
+import { useAuth } from "./lib/auth";
 
 const queryClient = new QueryClient();
 
@@ -35,8 +35,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
 }
 
 const App = () => {
-  // In a real app, this would be managed by auth context
-  const [isAuthenticated] = useState(true);
+  const { isAuthenticated } = useAuth();
 
   return (
     <QueryClientProvider client={queryClient}>
