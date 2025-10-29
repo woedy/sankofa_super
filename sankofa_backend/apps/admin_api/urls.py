@@ -6,8 +6,10 @@ from .views import (
     AuditLogViewSet,
     CashflowQueuesView,
     DashboardMetricsView,
+    DisputeViewSet,
     GroupViewSet,
     SavingsGoalViewSet,
+    SupportArticleViewSet,
     TransactionViewSet,
     UserViewSet,
 )
@@ -15,9 +17,11 @@ from .views import (
 router = DefaultRouter()
 router.register(r"users", UserViewSet, basename="admin-users")
 router.register(r"groups", GroupViewSet, basename="admin-groups")
+router.register(r"disputes", DisputeViewSet, basename="admin-disputes")
 router.register(r"savings-goals", SavingsGoalViewSet, basename="admin-savings-goals")
 router.register(r"transactions", TransactionViewSet, basename="admin-transactions")
 router.register(r"audit-logs", AuditLogViewSet, basename="admin-audit-logs")
+router.register(r"support-articles", SupportArticleViewSet, basename="admin-support-articles")
 
 urlpatterns = [
     path("auth/token/", AdminAuthView.as_view(), name="admin-auth-token"),

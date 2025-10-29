@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sankofasave/models/support_article_model.dart';
+import 'package:sankofasave/screens/dispute_center_screen.dart';
 import 'package:sankofasave/screens/support_article_detail_screen.dart';
 import 'package:sankofasave/services/support_service.dart';
 import 'package:sankofasave/ui/components/info_card.dart';
@@ -42,6 +43,12 @@ class _SupportCenterScreenState extends State<SupportCenterScreen> {
     setState(() {
       _selectedCategory = category == _selectedCategory ? null : category;
     });
+  }
+
+  void _openDisputes() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const DisputeCenterScreen()),
+    );
   }
 
   List<SupportArticleModel> _filterArticles(
@@ -133,6 +140,36 @@ class _SupportCenterScreenState extends State<SupportCenterScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                InfoCard(
+                  title: 'Need extra help?',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Chat with our support desk, open a new dispute, or review ongoing cases from one place.',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: 16),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          FilledButton.icon(
+                            onPressed: _openDisputes,
+                            icon: const Icon(Icons.forum_outlined),
+                            label: const Text('Open a dispute'),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: _openDisputes,
+                            icon: const Icon(Icons.list_alt),
+                            label: const Text('Track existing cases'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
                 if (categories.isNotEmpty)
                   SizedBox(
                     height: 40,

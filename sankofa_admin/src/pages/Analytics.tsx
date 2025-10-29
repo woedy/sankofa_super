@@ -29,12 +29,7 @@ export default function Analytics() {
     staleTime: 60_000,
   });
 
-  const kpis = data?.kpis ?? {
-    active_members: 0,
-    total_wallet_balance: 0,
-    pending_payouts: 0,
-    pending_withdrawals: 0,
-  };
+  const getKpiValue = (key: string) => data?.kpis?.[key]?.current ?? 0;
 
   const contributionSeries = useMemo(() => {
     if (!data?.daily_volume) return [] as Array<{ date: string; volume: number }>;
@@ -75,9 +70,13 @@ export default function Analytics() {
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <KPICard title="Monthly Volume" value={formatCurrency(contributionSeries.reduce((sum, point) => sum + point.volume, 0))} icon={DollarSign} />
-        <KPICard title="Active Members" value={kpis.active_members.toLocaleString()} icon={Users} />
-        <KPICard title="Wallet Float" value={formatCurrency(kpis.total_wallet_balance)} icon={Wallet} />
-        <KPICard title="Pending Cashflow" value={`${kpis.pending_payouts + kpis.pending_withdrawals}`} icon={TrendingUp} />
+        <KPICard title="Active Members" value={getKpiValue('active_members').toLocaleString()} icon={Users} />
+        <KPICard title="Wallet Float" value={formatCurrency(getKpiValue('total_wallet_balance'))} icon={Wallet} />
+        <KPICard
+          title="Pending Cashflow"
+          value={`${getKpiValue('pending_payouts') + getKpiValue('pending_withdrawals')}`}
+          icon={TrendingUp}
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -144,19 +143,19 @@ export default function Analytics() {
         <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-lg border border-border p-4">
             <p className="text-sm text-muted-foreground">Pending payouts</p>
-            <p className="text-2xl font-semibold text-foreground">{kpis.pending_payouts}</p>
+            <p className="text-2xl font-semibold text-foreground">{getKpiValue('pending_payouts')}</p>
           </div>
           <div className="rounded-lg border border-border p-4">
             <p className="text-sm text-muted-foreground">Pending withdrawals</p>
-            <p className="text-2xl font-semibold text-foreground">{kpis.pending_withdrawals}</p>
+            <p className="text-2xl font-semibold text-foreground">{getKpiValue('pending_withdrawals')}</p>
           </div>
           <div className="rounded-lg border border-border p-4">
             <p className="text-sm text-muted-foreground">Total wallet float</p>
-            <p className="text-2xl font-semibold text-foreground">{formatCurrency(kpis.total_wallet_balance)}</p>
+            <p className="text-2xl font-semibold text-foreground">{formatCurrency(getKpiValue('total_wallet_balance'))}</p>
           </div>
           <div className="rounded-lg border border-border p-4">
             <p className="text-sm text-muted-foreground">Active members</p>
-            <p className="text-2xl font-semibold text-foreground">{kpis.active_members.toLocaleString()}</p>
+            <p className="text-2xl font-semibold text-foreground">{getKpiValue('active_members').toLocaleString()}</p>
           </div>
         </CardContent>
       </Card>

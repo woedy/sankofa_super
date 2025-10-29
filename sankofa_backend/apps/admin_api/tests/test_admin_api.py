@@ -10,6 +10,7 @@ from rest_framework.test import APIClient, APITestCase
 
 from sankofa_backend.apps.accounts.models import User
 from sankofa_backend.apps.admin_api.models import AuditLog
+from sankofa_backend.apps.disputes.models import Dispute, DisputeMessage, SupportArticle
 from sankofa_backend.apps.groups.models import Group, GroupInvite, GroupMembership
 from sankofa_backend.apps.savings.models import SavingsGoal
 from sankofa_backend.apps.transactions.models import Transaction, Wallet
@@ -90,6 +91,36 @@ class AdminApiTests(APITestCase):
             channel="Bank Transfer",
         )
 
+        self.support_article = SupportArticle.objects.create(
+            slug="faq-contribution-missing-payment",
+            category="Wallet & Cashflow",
+            title="Reconcile a missing contribution payment",
+            summary="Checklist for verifying MoMo receipts when contributions fail to post.",
+            link="https://support.sankofa/disputes/missing-contribution",
+            tags=["MoMo", "Ledger"],
+        )
+
+        self.dispute = Dispute.objects.create(
+            title="Missing Contribution",
+            description="Member reports a missing contribution.",
+            category="Wallet & Cashflow",
+            severity=Dispute.Severity.CRITICAL,
+            priority=Dispute.Priority.HIGH,
+            channel=Dispute.Channel.MOBILE_APP,
+            user=self.member,
+            group=self.group,
+            assigned_to=self.staff_user,
+            sla_due=now + timedelta(hours=6),
+            related_article=self.support_article,
+        )
+        DisputeMessage.objects.create(
+            dispute=self.dispute,
+            author=self.member,
+            role=DisputeMessage.Role.MEMBER,
+            channel="Mobile App",
+            message="I sent my contribution but it is missing.",
+        )
+
         self.client = APIClient()
 
     def authenticate(self):
@@ -146,6 +177,14 @@ class AdminApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("kpis", response.data)
         self.assertIn("active_members", response.data["kpis"])
+        self.assertIn("current", response.data["kpis"]["active_members"])
+        self.assertIn("previous", response.data["kpis"]["active_members"])
+        self.assertIn("notifications", response.data)
+        self.assertIn("upcoming_payouts", response.data)
+        if response.data["upcoming_payouts"]:
+            sample = response.data["upcoming_payouts"][0]
+            self.assertIn("description", sample)
+            self.assertIn("status", sample)
 
     def test_groups_list_includes_membership_and_invite_counts(self):
         self.authenticate()
@@ -193,6 +232,29 @@ class AdminApiTests(APITestCase):
         delete_response = self.client.delete(detail_url)
         self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Group.objects.filter(pk=group_id).exists())
+
+    def test_admin_disputes_list_and_detail(self):
+        self.authenticate()
+        list_url = reverse("admin-api:admin-disputes-list")
+        response = self.client.get(list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(response.data["count"], 1)
+        sample = response.data["results"][0]
+        self.assertIn("case_number", sample)
+        self.assertEqual(sample["member_name"], self.member.full_name)
+
+        detail_url = reverse("admin-api:admin-disputes-detail", args=[self.dispute.pk])
+        detail_response = self.client.get(detail_url)
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+        self.assertIn("messages", detail_response.data)
+        self.assertEqual(detail_response.data["messages"][0]["message"], "I sent my contribution but it is missing.")
+
+    def test_admin_support_articles_list(self):
+        self.authenticate()
+        url = reverse("admin-api:admin-support-articles-list")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(len(response.data), 1)
 
     def test_admin_can_manage_group_invites_and_members(self):
         self.authenticate()

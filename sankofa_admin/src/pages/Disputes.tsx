@@ -1,9 +1,5 @@
 import React from 'react';
-
-import {
-  mockDisputes,
-  mockSupportArticles,
-} from '@/lib/mockData';
+import { useQuery } from '@tanstack/react-query';
 import {
   Card,
   CardContent,
@@ -35,6 +31,7 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   AlertTriangle,
   Calendar,
@@ -51,6 +48,9 @@ import {
   Users,
 } from 'lucide-react';
 
+import { useAuthorizedApi } from '@/lib/auth';
+import type { AdminDispute, PaginatedResponse, SupportArticle } from '@/lib/types';
+
 const severityOptions = ['Critical', 'High', 'Medium', 'Low'] as const;
 const slaOptions = [
   { value: 'all', label: 'All SLA states' },
@@ -58,8 +58,6 @@ const slaOptions = [
   { value: 'at-risk', label: 'At risk' },
   { value: 'breached', label: 'Breached' },
 ] as const;
-
-type Dispute = (typeof mockDisputes)[number];
 
 type SlaFilter = (typeof slaOptions)[number]['value'];
 
@@ -78,13 +76,19 @@ const slaStyles: Record<string, string> = {
   Breached: 'bg-destructive/10 text-destructive border-destructive/20',
 };
 
-function formatCountdown(isoDate: string) {
+function formatCountdown(isoDate?: string | null) {
+  if (!isoDate) {
+    return 'No SLA deadline';
+  }
   const due = new Date(isoDate);
+  if (Number.isNaN(due.getTime())) {
+    return 'No SLA deadline';
+  }
   const diffMs = due.getTime() - Date.now();
   const absDiff = Math.abs(diffMs);
   const hours = Math.floor(absDiff / (1000 * 60 * 60));
   const minutes = Math.floor((absDiff % (1000 * 60 * 60)) / (1000 * 60));
-  const parts = [] as string[];
+  const parts: string[] = [];
   if (hours > 0) {
     parts.push(`${hours}h`);
   }
@@ -95,8 +99,14 @@ function formatCountdown(isoDate: string) {
   return `Overdue by ${parts.join(' ')}`;
 }
 
-function formatTimestamp(isoDate: string, withTimeZone = false) {
+function formatTimestamp(isoDate?: string | null, withTimeZone = false) {
+  if (!isoDate) {
+    return '—';
+  }
   const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
   return new Intl.DateTimeFormat('en-GB', {
     year: 'numeric',
     month: 'short',
@@ -108,55 +118,103 @@ function formatTimestamp(isoDate: string, withTimeZone = false) {
   }).format(date);
 }
 
-function matchSlaFilter(dispute: Dispute, filter: SlaFilter) {
-  if (filter === 'all') {
-    return true;
+function formatFileSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return '0 KB';
   }
-  if (filter === 'breached') {
-    return dispute.slaStatus === 'Breached';
+  if (bytes < 1024) {
+    return `${bytes} B`;
   }
-  if (filter === 'at-risk') {
-    return dispute.slaStatus === 'At Risk';
+  const kb = bytes / 1024;
+  if (kb < 1024) {
+    return `${kb.toFixed(0)} KB`;
   }
-  if (filter === 'on-track') {
-    return dispute.slaStatus === 'On Track';
+  const mb = kb / 1024;
+  if (mb < 1024) {
+    return `${mb.toFixed(1)} MB`;
   }
-  return true;
+  const gb = mb / 1024;
+  return `${gb.toFixed(2)} GB`;
 }
 
+const toChoiceParam = (value: string) => value.toLowerCase().replace(/\s+/g, '-');
+
 export default function Disputes() {
+  const api = useAuthorizedApi();
+
   const [severityFilter, setSeverityFilter] = React.useState<SeverityFilter>('all');
   const [slaFilter, setSlaFilter] = React.useState<SlaFilter>('all');
   const [supportQuery, setSupportQuery] = React.useState('');
   const [supportCategory, setSupportCategory] = React.useState('all');
 
-  const faqCategories = React.useMemo(
-    () => Array.from(new Set(mockSupportArticles.map((article) => article.category))),
-    [],
-  );
-
-  const filteredDisputes = React.useMemo(() => {
-    return mockDisputes.filter((dispute) => {
-      const matchesSeverity =
-        severityFilter === 'all' || dispute.severity?.toLowerCase() === severityFilter.toLowerCase();
-      const matchesSla = matchSlaFilter(dispute, slaFilter);
-      return matchesSeverity && matchesSla;
-    });
+  const disputeParams = React.useMemo(() => {
+    const params = new URLSearchParams();
+    if (severityFilter !== 'all') {
+      params.set('severity', toChoiceParam(severityFilter));
+    }
+    if (slaFilter !== 'all') {
+      params.set('sla_status', slaFilter);
+    }
+    return params;
   }, [severityFilter, slaFilter]);
 
+  const disputesEndpoint = React.useMemo(() => {
+    const queryString = disputeParams.toString();
+    return queryString ? `/api/admin/disputes/?${queryString}` : '/api/admin/disputes/';
+  }, [disputeParams]);
+
+  const disputesQuery = useQuery<PaginatedResponse<AdminDispute>>({
+    queryKey: ['admin-disputes', disputesEndpoint],
+    queryFn: () => api<PaginatedResponse<AdminDispute>>(disputesEndpoint),
+    keepPreviousData: true,
+    refetchOnMount: 'always',
+  });
+
+  const disputes = React.useMemo(() => disputesQuery.data?.results ?? [], [disputesQuery.data]);
+  const disputesErrorMessage =
+    disputesQuery.error instanceof Error
+      ? disputesQuery.error.message
+      : disputesQuery.error
+        ? 'We could not load disputes. Please try again shortly.'
+        : null;
+
+  const articlesQuery = useQuery<SupportArticle[]>({
+    queryKey: ['admin-support-articles'],
+    queryFn: () => api<SupportArticle[]>('/api/admin/support-articles/'),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const articles = articlesQuery.data ?? [];
+
+  const faqCategories = React.useMemo(
+    () => Array.from(new Set(articles.map((article) => article.category))).sort(),
+    [articles],
+  );
+
+  const normalizedSupportQuery = supportQuery.trim().toLowerCase();
+
   const filteredArticles = React.useMemo(() => {
-    return mockSupportArticles.filter((article) => {
+    return articles.filter((article) => {
       const matchesCategory =
         supportCategory === 'all' || article.category.toLowerCase() === supportCategory.toLowerCase();
-      const query = supportQuery.trim().toLowerCase();
       const matchesQuery =
-        query.length === 0 ||
-        article.title.toLowerCase().includes(query) ||
-        article.summary.toLowerCase().includes(query) ||
-        article.tags.some((tag) => tag.toLowerCase().includes(query));
+        normalizedSupportQuery.length === 0 ||
+        article.title.toLowerCase().includes(normalizedSupportQuery) ||
+        article.summary.toLowerCase().includes(normalizedSupportQuery) ||
+        article.tags.some((tag) => tag.toLowerCase().includes(normalizedSupportQuery));
       return matchesCategory && matchesQuery;
     });
-  }, [supportCategory, supportQuery]);
+  }, [articles, normalizedSupportQuery, supportCategory]);
+
+  const articlesErrorMessage =
+    articlesQuery.error instanceof Error
+      ? articlesQuery.error.message
+      : articlesQuery.error
+        ? 'We could not load support articles. Please try again shortly.'
+        : null;
+
+  const isDisputesLoading = disputesQuery.isLoading && !disputesQuery.data;
+  const isArticlesLoading = articlesQuery.isLoading && !articlesQuery.data;
 
   return (
     <div className="space-y-6">
@@ -205,8 +263,33 @@ export default function Disputes() {
               </div>
             </div>
 
+            {disputesErrorMessage && (
+              <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+                {disputesErrorMessage}
+              </div>
+            )}
+
             <div className="space-y-4">
-              {filteredDisputes.map((dispute) => (
+              {isDisputesLoading && (
+                <>
+                  {[0, 1, 2].map((index) => (
+                    <Card key={`dispute-skeleton-${index}`} className="border-2 border-transparent shadow-custom-sm">
+                      <CardContent className="space-y-4 p-6">
+                        <Skeleton className="h-5 w-40" />
+                        <Skeleton className="h-4 w-full" />
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          {[...Array(6).keys()].map((item) => (
+                            <Skeleton key={item} className="h-4 w-full" />
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </>
+              )}
+
+              {!isDisputesLoading &&
+                disputes.map((dispute) => (
                 <Card
                   key={dispute.id}
                   className="border-2 border-transparent shadow-custom-sm transition-smooth hover:border-primary/20"
@@ -215,7 +298,7 @@ export default function Disputes() {
                     <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                       <div className="space-y-3">
                         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                          <span className="font-semibold text-foreground">#{dispute.id}</span>
+                          <span className="font-semibold text-foreground">#{dispute.case_number}</span>
                           <Badge
                             variant="outline"
                             className={`font-medium ${severityStyles[dispute.severity || ''] || 'bg-muted text-muted-foreground border-border'}`}
@@ -231,15 +314,15 @@ export default function Disputes() {
                         <div className="grid gap-3 text-sm text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
                           <div className="flex items-center gap-2">
                             <User className="h-4 w-4" />
-                            <span>{dispute.user}</span>
+                            <span>{dispute.member_name}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <Users className="h-4 w-4" />
-                            <span>{dispute.group}</span>
+                            <span>{dispute.group_name ?? '—'}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <Calendar className="h-4 w-4" />
-                            <span>Opened {formatTimestamp(dispute.openedAt)}</span>
+                            <span>Opened {formatTimestamp(dispute.opened_at)}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <Mail className="h-4 w-4" />
@@ -247,11 +330,11 @@ export default function Disputes() {
                           </div>
                           <div className="flex items-center gap-2">
                             <AlertTriangle className="h-4 w-4 text-warning" />
-                            <span>Assigned to {dispute.assignedTo}</span>
+                            <span>Assigned to {dispute.assigned_to_name ?? 'Unassigned'}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <FileText className="h-4 w-4" />
-                            <span>Updated {formatTimestamp(dispute.lastUpdated)}</span>
+                            <span>Updated {formatTimestamp(dispute.last_updated)}</span>
                           </div>
                         </div>
                       </div>
@@ -259,17 +342,17 @@ export default function Disputes() {
                         <Badge
                           variant="outline"
                           className={`w-full justify-center font-semibold md:w-auto ${
-                            slaStyles[dispute.slaStatus] || 'bg-muted text-muted-foreground border-border'
+                            slaStyles[dispute.sla_status] || 'bg-muted text-muted-foreground border-border'
                           }`}
                         >
-                          {dispute.slaStatus}
+                          {dispute.sla_status}
                         </Badge>
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Clock className="h-4 w-4" />
-                          <span>{formatCountdown(dispute.slaDue)}</span>
+                          <span>{formatCountdown(dispute.sla_due)}</span>
                         </div>
                         <span className="text-xs text-muted-foreground">
-                          SLA due {formatTimestamp(dispute.slaDue, true)}
+                          SLA due {formatTimestamp(dispute.sla_due, true)}
                         </span>
                       </div>
                     </div>
@@ -284,90 +367,92 @@ export default function Disputes() {
                         <DialogContent className="max-w-3xl">
                           <DialogHeader>
                             <DialogTitle>{dispute.title}</DialogTitle>
-                            <DialogDescription>
-                              Review the conversation timeline, attachments, and escalation controls for this dispute.
-                            </DialogDescription>
-                          </DialogHeader>
-                          <ScrollArea className="max-h-[60vh] pr-4">
-                            <div className="space-y-6 py-1">
-                              <div className="grid gap-4 sm:grid-cols-2">
-                                <div className="space-y-1 text-sm">
-                                  <p className="text-xs font-medium text-muted-foreground">Member</p>
-                                  <p className="text-base font-semibold text-foreground">{dispute.user}</p>
-                                </div>
-                                <div className="space-y-1 text-sm">
-                                  <p className="text-xs font-medium text-muted-foreground">Group</p>
-                                  <p className="text-base font-semibold text-foreground">{dispute.group}</p>
-                                </div>
-                                <div className="space-y-1 text-sm">
-                                  <p className="text-xs font-medium text-muted-foreground">SLA status</p>
-                                  <Badge
-                                    variant="outline"
-                                    className={`font-semibold ${
-                                      slaStyles[dispute.slaStatus] || 'bg-muted text-muted-foreground border-border'
+                              <DialogDescription>
+                                Review the conversation timeline, attachments, and escalation controls for this dispute.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <ScrollArea className="max-h-[60vh] pr-4">
+                              <div className="space-y-6 py-1">
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                  <div className="space-y-1 text-sm">
+                                    <p className="text-xs font-medium text-muted-foreground">Member</p>
+                                    <p className="text-base font-semibold text-foreground">{dispute.member_name}</p>
+                                  </div>
+                                  <div className="space-y-1 text-sm">
+                                    <p className="text-xs font-medium text-muted-foreground">Group</p>
+                                    <p className="text-base font-semibold text-foreground">{dispute.group_name ?? '—'}</p>
+                                  </div>
+                                  <div className="space-y-1 text-sm">
+                                    <p className="text-xs font-medium text-muted-foreground">SLA status</p>
+                                    <Badge
+                                      variant="outline"
+                                      className={`font-semibold ${
+                                      slaStyles[dispute.sla_status] || 'bg-muted text-muted-foreground border-border'
                                     }`}
-                                  >
-                                    {dispute.slaStatus}
-                                  </Badge>
-                                </div>
-                                <div className="space-y-1 text-sm">
-                                  <p className="text-xs font-medium text-muted-foreground">Assigned owner</p>
-                                  <p className="text-base font-semibold text-foreground">{dispute.assignedTo}</p>
-                                </div>
-                              </div>
-
-                              <div className="space-y-3 rounded-lg border border-border p-4">
-                                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                                  <h4 className="text-sm font-semibold text-foreground">Conversation timeline</h4>
-                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                    <Clock className="h-3.5 w-3.5" /> Last updated {formatTimestamp(dispute.lastUpdated)}
+                                    >
+                                      {dispute.sla_status}
+                                    </Badge>
+                                  </div>
+                                  <div className="space-y-1 text-sm">
+                                    <p className="text-xs font-medium text-muted-foreground">Assigned owner</p>
+                                    <p className="text-base font-semibold text-foreground">{dispute.assigned_to_name ?? 'Unassigned'}</p>
                                   </div>
                                 </div>
-                                <div className="space-y-3">
-                                  {dispute.conversation.map((entry) => (
-                                    <div
-                                      key={entry.id}
-                                      className="rounded-md border border-border/80 bg-muted/40 p-3 text-sm text-muted-foreground"
-                                    >
-                                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                                        <span className="font-semibold text-foreground">{entry.author}</span>
+
+                                <div className="space-y-3 rounded-lg border border-border p-4">
+                                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                    <h4 className="text-sm font-semibold text-foreground">Conversation timeline</h4>
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                      <Clock className="h-3.5 w-3.5" /> Last updated {formatTimestamp(dispute.last_updated)}
+                                    </div>
+                                  </div>
+                                  <div className="space-y-3">
+                                    {dispute.messages.map((entry) => (
+                                      <div
+                                        key={entry.id}
+                                        className="rounded-md border border-border/80 bg-muted/40 p-3 text-sm text-muted-foreground"
+                                      >
+                                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                                        <span className="font-semibold text-foreground">{entry.author_name}</span>
                                         <span>{formatTimestamp(entry.timestamp)}</span>
                                       </div>
                                       <p className="mt-2 leading-relaxed text-foreground">{entry.message}</p>
                                       <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                                        <Send className="h-3.5 w-3.5" /> {entry.role} · {entry.channel}
+                                        <Send className="h-3.5 w-3.5" /> {entry.role} · {entry.channel || '—'}
                                       </div>
                                     </div>
                                   ))}
+                                  </div>
                                 </div>
-                              </div>
 
-                              <div className="space-y-3">
-                                <h4 className="text-sm font-semibold text-foreground">Attachments</h4>
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                  {dispute.attachments.map((file) => (
-                                    <div
-                                      key={file.id}
-                                      className="flex items-center justify-between gap-3 rounded-lg border border-border/80 bg-muted/30 p-3 text-sm"
-                                    >
-                                      <div className="flex items-center gap-3">
-                                        <Paperclip className="h-4 w-4 text-muted-foreground" />
-                                        <div>
-                                          <p className="font-medium text-foreground">{file.fileName}</p>
-                                          <p className="text-xs text-muted-foreground">
-                                            {file.type} · {file.size}
-                                          </p>
+                                <div className="space-y-3">
+                                  <h4 className="text-sm font-semibold text-foreground">Attachments</h4>
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    {dispute.attachments.map((file) => (
+                                      <div
+                                        key={file.id}
+                                        className="flex items-center justify-between gap-3 rounded-lg border border-border/80 bg-muted/30 p-3 text-sm"
+                                      >
+                                        <div className="flex items-center gap-3">
+                                          <Paperclip className="h-4 w-4 text-muted-foreground" />
+                                          <div>
+                                          <p className="font-medium text-foreground">{file.file_name}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                            {file.content_type} · {formatFileSize(file.size)}
+                                            </p>
+                                          </div>
                                         </div>
-                                      </div>
-                                      <Button variant="ghost" size="icon" aria-label="Download attachment">
-                                        <ExternalLink className="h-4 w-4" />
+                                      <Button variant="ghost" size="icon" asChild aria-label="Download attachment">
+                                        <a href={file.download_url} target="_blank" rel="noreferrer">
+                                          <ExternalLink className="h-4 w-4" />
+                                        </a>
                                       </Button>
-                                    </div>
-                                  ))}
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
-                              </div>
 
-                              <Separator />
+                                <Separator />
 
                               <div className="space-y-4">
                                 <div className="grid gap-4 sm:grid-cols-2">
@@ -408,50 +493,42 @@ export default function Disputes() {
                                 </div>
                               </div>
 
-                              {dispute.relatedFaqId && (
+                              {dispute.related_article && (
                                 <div className="space-y-2 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-4">
                                   <p className="text-sm font-semibold text-primary">Related knowledge base article</p>
-                                  {(() => {
-                                    const relatedArticle = mockSupportArticles.find(
-                                      (article) => article.id === dispute.relatedFaqId,
-                                    );
-                                    if (!relatedArticle) return null;
-                                    return (
-                                      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-                                        <div>
-                                          <p className="font-medium text-foreground">{relatedArticle.title}</p>
-                                          <p className="text-xs text-muted-foreground">{relatedArticle.summary}</p>
-                                        </div>
-                                        <Button asChild size="sm" variant="outline">
-                                          <a href={relatedArticle.link} target="_blank" rel="noreferrer">
-                                            View playbook
-                                            <ExternalLink className="ml-2 h-3.5 w-3.5" />
-                                          </a>
-                                        </Button>
-                                      </div>
-                                    );
-                                  })()}
+                                  <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                                    <div>
+                                      <p className="font-medium text-foreground">{dispute.related_article.title}</p>
+                                      <p className="text-xs text-muted-foreground">{dispute.related_article.summary}</p>
+                                    </div>
+                                    <Button asChild size="sm" variant="outline">
+                                      <a href={dispute.related_article.link} target="_blank" rel="noreferrer">
+                                        View playbook
+                                        <ExternalLink className="ml-2 h-3.5 w-3.5" />
+                                      </a>
+                                    </Button>
+                                  </div>
                                 </div>
                               )}
                             </div>
                           </ScrollArea>
                           <div className="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
-                            <Button variant="outline">
+                            <Button variant="outline" disabled title="Logging callbacks coming soon">
                               <Phone className="mr-2 h-4 w-4" /> Log Call Back
                             </Button>
-                            <Button variant="ghost">
+                            <Button variant="ghost" disabled title="Requesting info coming soon">
                               <Send className="mr-2 h-4 w-4" /> Request More Info
                             </Button>
-                            <Button variant="destructive">
+                            <Button variant="destructive" disabled title="Escalations coming soon">
                               <AlertTriangle className="mr-2 h-4 w-4" /> Escalate
                             </Button>
-                            <Button>
+                            <Button disabled title="Resolution workflow coming soon">
                               <MessageSquare className="mr-2 h-4 w-4" /> Mark Resolved
                             </Button>
                           </div>
                         </DialogContent>
                       </Dialog>
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" disabled title="Outreach logging coming soon">
                         <Phone className="mr-2 h-4 w-4" /> Log outreach
                       </Button>
                     </div>
@@ -459,7 +536,7 @@ export default function Disputes() {
                 </Card>
               ))}
 
-              {filteredDisputes.length === 0 && (
+              {!isDisputesLoading && disputes.length === 0 && (
                 <div className="rounded-lg border border-dashed border-border px-6 py-10 text-center text-sm text-muted-foreground">
                   No disputes match the selected filters. Adjust severity or SLA filters to view more cases.
                 </div>
@@ -505,39 +582,65 @@ export default function Disputes() {
               </ToggleGroup>
             </div>
 
+            {articlesErrorMessage && (
+              <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                {articlesErrorMessage}
+              </div>
+            )}
+
             <ScrollArea className="h-[520px] pr-4">
               <div className="space-y-4">
-                {filteredArticles.map((article) => (
-                  <div
-                    key={article.id}
-                    className="space-y-3 rounded-lg border border-border/80 bg-muted/30 p-4 transition-smooth hover:border-primary/30"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <Badge variant="outline" className="font-medium">
-                          {article.category}
-                        </Badge>
-                        <h4 className="text-base font-semibold text-foreground">{article.title}</h4>
-                        <p className="text-sm text-muted-foreground">{article.summary}</p>
+                {isArticlesLoading && (
+                  <>
+                    {[0, 1, 2].map((index) => (
+                      <div
+                        key={`article-skeleton-${index}`}
+                        className="space-y-3 rounded-lg border border-border/80 bg-muted/30 p-4"
+                      >
+                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className="h-5 w-3/4" />
+                        <Skeleton className="h-4 w-full" />
+                        <div className="flex gap-2">
+                          <Skeleton className="h-5 w-16" />
+                          <Skeleton className="h-5 w-20" />
+                        </div>
                       </div>
-                      <Button asChild variant="ghost" size="sm">
-                        <a href={article.link} target="_blank" rel="noreferrer">
-                          Open
-                          <ExternalLink className="ml-2 h-4 w-4" />
-                        </a>
-                      </Button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {article.tags.map((tag) => (
-                        <Badge key={`${article.id}-${tag}`} variant="secondary" className="capitalize">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                    ))}
+                  </>
+                )}
 
-                {filteredArticles.length === 0 && (
+                {!isArticlesLoading &&
+                  filteredArticles.map((article) => (
+                    <div
+                      key={article.id}
+                      className="space-y-3 rounded-lg border border-border/80 bg-muted/30 p-4 transition-smooth hover:border-primary/30"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <Badge variant="outline" className="font-medium">
+                            {article.category}
+                          </Badge>
+                          <h4 className="text-base font-semibold text-foreground">{article.title}</h4>
+                          <p className="text-sm text-muted-foreground">{article.summary}</p>
+                        </div>
+                        <Button asChild variant="ghost" size="sm">
+                          <a href={article.link} target="_blank" rel="noreferrer">
+                            Open
+                            <ExternalLink className="ml-2 h-4 w-4" />
+                          </a>
+                        </Button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {article.tags.map((tag) => (
+                          <Badge key={`${article.id}-${tag}`} variant="secondary" className="capitalize">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+
+                {!isArticlesLoading && filteredArticles.length === 0 && (
                   <div className="rounded-lg border border-dashed border-border px-6 py-10 text-center text-sm text-muted-foreground">
                     No articles found. Try a different keyword or category.
                   </div>

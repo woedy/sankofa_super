@@ -17,12 +17,17 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from ..disputes.models import Dispute, SupportArticle
+from ..disputes.serializers import DisputeMessageCreateSerializer
 from ..groups.models import Group, GroupInvite
 from ..savings.models import SavingsGoal
 from ..transactions.models import Transaction, Wallet
 from .models import AuditLog
 from .permissions import IsStaffUser
 from .serializers import (
+    AdminDisputeSerializer,
+    AdminDisputeUpdateSerializer,
+    AdminSupportArticleSerializer,
     AdminTokenObtainSerializer,
     AdminUserDetailSerializer,
     AdminUserSummarySerializer,
@@ -367,6 +372,152 @@ class GroupViewSet(viewsets.ModelViewSet):
         return self._build_response(group)
 
 
+class DisputeViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsStaffUser]
+    pagination_class = AdminPagination
+    serializer_class = AdminDisputeSerializer
+
+    def get_queryset(self):
+        queryset = (
+            Dispute.objects.all()
+            .select_related("user", "group", "assigned_to", "related_article")
+            .prefetch_related("messages", "attachments")
+            .order_by("-opened_at")
+        )
+
+        severity = self.request.query_params.get("severity")
+        if severity and severity.lower() != "all":
+            normalized = self._match_choice(Dispute.Severity.choices, severity)
+            queryset = queryset.filter(severity__iexact=normalized)
+
+        status_filter = self.request.query_params.get("status")
+        if status_filter and status_filter.lower() != "all":
+            normalized_status = self._match_choice(Dispute.Status.choices, status_filter)
+            queryset = queryset.filter(status__iexact=normalized_status)
+
+        sla_status = self.request.query_params.get("sla_status")
+        if sla_status and sla_status.lower() != "all":
+            normalized_sla = self._match_choice(Dispute.SlaStatus.choices, sla_status)
+            queryset = queryset.filter(sla_status__iexact=normalized_sla)
+
+        channel = self.request.query_params.get("channel")
+        if channel and channel.lower() != "all":
+            normalized_channel = self._match_choice(Dispute.Channel.choices, channel)
+            queryset = queryset.filter(channel__iexact=normalized_channel)
+
+        assigned_to = self.request.query_params.get("assigned_to")
+        if assigned_to:
+            if assigned_to.lower() == "unassigned":
+                queryset = queryset.filter(assigned_to__isnull=True)
+            else:
+                queryset = queryset.filter(assigned_to_id=assigned_to)
+
+        search = self.request.query_params.get("search")
+        if search:
+            query = search.strip()
+            if query:
+                queryset = queryset.filter(
+                    Q(case_number__icontains=query)
+                    | Q(title__icontains=query)
+                    | Q(user__full_name__icontains=query)
+                    | Q(user__phone_number__icontains=query)
+                    | Q(group__name__icontains=query)
+                )
+
+        return queryset
+
+    def get_serializer_class(self):
+        if self.action in {"update", "partial_update"}:
+            return AdminDisputeUpdateSerializer
+        return super().get_serializer_class()
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context.setdefault("request", self.request)
+        return context
+
+    def _match_choice(self, choices, value):
+        normalized = value.strip().lower().replace("-", " ").replace("_", " ")
+        for choice, _label in choices:
+            if choice.lower() == normalized:
+                return choice
+        return value
+
+    def _serialize_changes(self, changes: dict[str, Any]) -> dict[str, Any]:
+        serialized: dict[str, Any] = {}
+        for key, value in changes.items():
+            if isinstance(value, Decimal):
+                serialized[key] = str(value)
+            elif isinstance(value, (datetime, date)):
+                serialized[key] = value.isoformat()
+            elif hasattr(value, "pk"):
+                serialized[key] = str(value.pk)
+            else:
+                serialized[key] = value
+        return serialized
+
+    def _get_refreshed(self, pk):
+        return self.get_queryset().get(pk=pk)
+
+    def _update_dispute(self, request, *args, partial: bool = False, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        refreshed = self._get_refreshed(instance.pk)
+        read_serializer = AdminDisputeSerializer(refreshed, context=self.get_serializer_context())
+        return Response(read_serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        return self._update_dispute(request, *args, partial=False, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        return self._update_dispute(request, *args, partial=True, **kwargs)
+
+    def perform_update(self, serializer):
+        changes = dict(serializer.validated_data)
+        dispute = serializer.save()
+        AuditLog.objects.create(
+            actor=self.request.user,
+            action="dispute.updated",
+            target_type="disputes.Dispute",
+            target_id=str(dispute.pk),
+            changes=self._serialize_changes(changes),
+        )
+
+    @action(detail=True, methods=["post"], url_path="messages")
+    def add_message(self, request, *args, **kwargs):
+        dispute = self.get_object()
+        serializer = DisputeMessageCreateSerializer(
+            data=request.data,
+            context={"dispute": dispute, "author": request.user},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        refreshed = self._get_refreshed(dispute.pk)
+        read_serializer = AdminDisputeSerializer(refreshed, context=self.get_serializer_context())
+        return Response(read_serializer.data, status=status.HTTP_200_OK)
+
+
+class SupportArticleViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsStaffUser]
+    serializer_class = AdminSupportArticleSerializer
+
+    def get_queryset(self):
+        queryset = SupportArticle.objects.all().order_by("title")
+        category = self.request.query_params.get("category")
+        if category and category.lower() != "all":
+            queryset = queryset.filter(category__iexact=category)
+        search = self.request.query_params.get("search")
+        if search:
+            query = search.strip()
+            if query:
+                queryset = queryset.filter(
+                    Q(title__icontains=query) | Q(summary__icontains=query)
+                )
+        return queryset
+
+
 class SavingsGoalViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsStaffUser]
     pagination_class = AdminPagination
@@ -425,22 +576,55 @@ class DashboardMetricsView(APIView):
     def get(self, request, *args, **kwargs):
         now = timezone.now()
         start_of_week = now - timedelta(days=6)
+        week_start_date = start_of_week.date()
+        previous_week_end = week_start_date - timedelta(days=1)
         recent_transactions = Transaction.objects.filter(occurred_at__date__gte=now.date() - timedelta(days=30))
 
         active_members = User.objects.filter(is_active=True).count()
+        previous_active_members = User.objects.filter(is_active=True, date_joined__date__lte=previous_week_end).count()
+
         total_wallet_balance = (
             Wallet.objects.aggregate(
                 total=Coalesce(Sum("balance"), Value(Decimal("0.00")))
             )["total"]
         )
-        pending_payouts = Transaction.objects.filter(
+
+        week_transactions = Transaction.objects.filter(
+            occurred_at__date__gte=week_start_date,
+            occurred_at__date__lte=now.date(),
+            status=Transaction.STATUS_SUCCESS,
+        )
+        inflow_total = (
+            week_transactions.filter(transaction_type__in=Transaction.INFLOW_TYPES)
+            .aggregate(total=Coalesce(Sum("amount"), Value(Decimal("0.00"))))
+            ["total"]
+        )
+        outflow_total = (
+            week_transactions.filter(transaction_type__in=Transaction.OUTFLOW_TYPES)
+            .aggregate(total=Coalesce(Sum("amount"), Value(Decimal("0.00"))))
+            ["total"]
+        )
+        current_total_balance = total_wallet_balance or Decimal("0.00")
+        inflow_total = inflow_total or Decimal("0.00")
+        outflow_total = outflow_total or Decimal("0.00")
+        previous_total_wallet_balance = max(
+            Decimal("0.00"),
+            Decimal(current_total_balance) - Decimal(inflow_total) + Decimal(outflow_total),
+        )
+
+        pending_payouts_qs = Transaction.objects.filter(
             transaction_type=Transaction.TYPE_PAYOUT,
             status=Transaction.STATUS_PENDING,
-        ).count()
-        pending_withdrawals = Transaction.objects.filter(
+        )
+        pending_payouts = pending_payouts_qs.count()
+        previous_pending_payouts = pending_payouts_qs.filter(occurred_at__date__lt=week_start_date).count()
+
+        pending_withdrawals_qs = Transaction.objects.filter(
             transaction_type=Transaction.TYPE_WITHDRAWAL,
             status=Transaction.STATUS_PENDING,
-        ).count()
+        )
+        pending_withdrawals = pending_withdrawals_qs.count()
+        previous_pending_withdrawals = pending_withdrawals_qs.filter(occurred_at__date__lt=week_start_date).count()
 
         daily_volume_qs = (
             recent_transactions.exclude(status=Transaction.STATUS_FAILED)
@@ -487,12 +671,17 @@ class DashboardMetricsView(APIView):
                 "scheduled_for": transaction.occurred_at,
                 "amount": transaction.amount,
                 "group": transaction.group.name if transaction.group else None,
+                "user": transaction.user.full_name or transaction.user.phone_number,
+                "description": transaction.description,
+                "status": transaction.status,
             }
             for transaction in Transaction.objects.filter(
                 transaction_type=Transaction.TYPE_PAYOUT,
                 status__in=[Transaction.STATUS_PENDING, Transaction.STATUS_SUCCESS],
                 occurred_at__gte=start_of_week,
-            ).order_by("occurred_at")[:10]
+            )
+            .select_related("group", "user")
+            .order_by("occurred_at")[:10]
         ]
 
         notifications = []
@@ -529,10 +718,22 @@ class DashboardMetricsView(APIView):
 
         payload = {
             "kpis": {
-                "active_members": active_members,
-                "total_wallet_balance": float(total_wallet_balance),
-                "pending_payouts": pending_payouts,
-                "pending_withdrawals": pending_withdrawals,
+                "active_members": {
+                    "current": float(active_members),
+                    "previous": float(previous_active_members),
+                },
+                "total_wallet_balance": {
+                    "current": float(total_wallet_balance),
+                    "previous": float(previous_total_wallet_balance),
+                },
+                "pending_payouts": {
+                    "current": float(pending_payouts),
+                    "previous": float(previous_pending_payouts),
+                },
+                "pending_withdrawals": {
+                    "current": float(pending_withdrawals),
+                    "previous": float(previous_pending_withdrawals),
+                },
             },
             "daily_volume": daily_volume,
             "contribution_mix": contribution_mix,

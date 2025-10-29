@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, RefreshCcw } from 'lucide-react';
+import { Search, RefreshCcw, Download } from 'lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -62,15 +62,20 @@ export default function Transactions() {
     <div className="space-y-6">
       <Card className="shadow-custom-md">
         <CardHeader>
-          <div className="flex items-start justify-between">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <CardTitle>Transaction History</CardTitle>
               <CardDescription>Monitor platform cashflow and review transaction statuses</CardDescription>
             </div>
-            <Button variant="outline" onClick={() => refetch()} disabled={isFetching}>
-              <RefreshCcw className={`mr-2 h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => refetch()} disabled={isFetching}>
+                <RefreshCcw className={`mr-2 h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+              <Button variant="ghost">
+                <Download className="mr-2 h-4 w-4" /> Export CSV
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -167,7 +172,7 @@ export default function Transactions() {
           </div>
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>Total results: {data?.count ?? 0}</span>
-            <span>Showing {transactions.length} items</span>
+            <span>Showing {transactions.length} transactions</span>
           </div>
         </CardContent>
       </Card>
