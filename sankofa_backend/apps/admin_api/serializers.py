@@ -9,6 +9,12 @@ from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from ..accounts.services import get_platform_user
+from ..disputes.models import Dispute
+from ..disputes.serializers import (
+    DisputeSerializer as BaseDisputeSerializer,
+    DisputeUpdateSerializer as BaseDisputeUpdateSerializer,
+    SupportArticleSerializer as BaseSupportArticleSerializer,
+)
 from ..groups.models import Group, GroupInvite
 from ..savings.models import SavingsGoal
 from ..transactions.models import Transaction, Wallet
@@ -520,10 +526,13 @@ class UpcomingPayoutSerializer(serializers.Serializer):
     scheduled_for = serializers.DateTimeField()
     amount = serializers.DecimalField(max_digits=14, decimal_places=2)
     group = serializers.CharField(allow_null=True, allow_blank=True)
+    user = serializers.CharField(allow_null=True, allow_blank=True)
+    description = serializers.CharField(allow_blank=True)
+    status = serializers.CharField()
 
 
 class DashboardMetricsSerializer(serializers.Serializer):
-    kpis = serializers.DictField(child=serializers.FloatField())
+    kpis = serializers.DictField(child=serializers.DictField(child=serializers.FloatField()))
     daily_volume = DailyVolumePointSerializer(many=True)
     contribution_mix = ContributionSliceSerializer(many=True)
     member_growth = MemberGrowthPointSerializer(many=True)
@@ -546,3 +555,23 @@ class CashflowQueueItemSerializer(serializers.Serializer):
 class CashflowQueuesSerializer(serializers.Serializer):
     deposits = CashflowQueueItemSerializer(many=True)
     withdrawals = CashflowQueueItemSerializer(many=True)
+
+
+class AdminSupportArticleSerializer(BaseSupportArticleSerializer):
+    class Meta(BaseSupportArticleSerializer.Meta):
+        model = BaseSupportArticleSerializer.Meta.model
+        fields = BaseSupportArticleSerializer.Meta.fields
+        read_only_fields = BaseSupportArticleSerializer.Meta.read_only_fields
+
+
+class AdminDisputeSerializer(BaseDisputeSerializer):
+    class Meta(BaseDisputeSerializer.Meta):
+        model = Dispute
+        fields = BaseDisputeSerializer.Meta.fields
+        read_only_fields = BaseDisputeSerializer.Meta.read_only_fields
+
+
+class AdminDisputeUpdateSerializer(BaseDisputeUpdateSerializer):
+    class Meta(BaseDisputeUpdateSerializer.Meta):
+        model = Dispute
+        fields = BaseDisputeUpdateSerializer.Meta.fields
