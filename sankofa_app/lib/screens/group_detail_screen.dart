@@ -626,9 +626,16 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   List<_TimelineStage> _mapProgressStages() {
     final now = DateTime.now();
     final payoutCountdown = _group!.nextPayoutDate.difference(now).inDays;
-    final nextRecipientIndex = (_group!.cycleNumber - 1)
-        .clamp(0, _group!.memberNames.length - 1);
-    final isFinalCycle = _group!.cycleNumber >= _group!.totalCycles;
+    final memberCount = _group!.memberNames.length;
+    final hasConfirmedMembers = memberCount > 0;
+    final nextRecipientIndex = hasConfirmedMembers
+        ? (_group!.cycleNumber - 1).clamp(0, memberCount - 1)
+        : null;
+    final nextRecipientName = hasConfirmedMembers
+        ? _group!.memberNames[nextRecipientIndex!]
+        : 'Awaiting roster confirmation';
+    final isFinalCycle = hasConfirmedMembers &&
+        _group!.cycleNumber >= _group!.totalCycles;
 
     return [
       _TimelineStage(
@@ -637,16 +644,25 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         status: _TimelineStatus.complete,
       ),
       _TimelineStage(
-        title: 'Cycle ${_group!.cycleNumber} contributions',
-        subtitle: 'Members send GH₵ ${_group!.contributionAmount.toStringAsFixed(2)} weekly.',
-        status: _TimelineStatus.active,
+        title: hasConfirmedMembers
+            ? 'Cycle ${_group!.cycleNumber} contributions'
+            : 'Roster building in progress',
+        subtitle: hasConfirmedMembers
+            ? 'Members send GH₵ ${_group!.contributionAmount.toStringAsFixed(2)} weekly.'
+            : 'Admin approvals pending before the first contribution round.',
+        status:
+            hasConfirmedMembers ? _TimelineStatus.active : _TimelineStatus.upcoming,
       ),
       _TimelineStage(
-        title: 'Next payout · ${_group!.memberNames[nextRecipientIndex]}',
-        subtitle: payoutCountdown >= 0
-            ? '$payoutCountdown days remaining'
-            : 'Payout processed recently',
-        status: isFinalCycle ? _TimelineStatus.complete : _TimelineStatus.upcoming,
+        title: 'Next payout · $nextRecipientName',
+        subtitle: hasConfirmedMembers
+            ? (payoutCountdown >= 0
+                ? '$payoutCountdown days remaining'
+                : 'Payout processed recently')
+            : 'Once members are confirmed, payouts will be scheduled.',
+        status: hasConfirmedMembers
+            ? (isFinalCycle ? _TimelineStatus.complete : _TimelineStatus.upcoming)
+            : _TimelineStatus.upcoming,
       ),
       _TimelineStage(
         title: isFinalCycle ? 'Wrap-up & celebration' : 'Prep for cycle ${_group!.cycleNumber + 1}',
@@ -723,6 +739,22 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   Widget _buildMemberRoster(BuildContext context) {
     final theme = Theme.of(context);
     final members = _group!.memberNames;
+
+    if (members.isEmpty) {
+      return InfoCard(
+        title: 'Member Roster',
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+          child: Text(
+            'No confirmed members yet. Approvals will appear here once invites are accepted.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+            ),
+          ),
+        ),
+      );
+    }
+
     final currentTurnIndex = (_group!.cycleNumber - 1).clamp(0, members.length - 1);
 
     return InfoCard(
