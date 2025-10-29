@@ -160,12 +160,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await refresh();
         return fetchWithAuth(input, init, false);
       }
-      if (response.status === 403) {
-        logout();
-      }
       return response;
     },
-    [logout, refresh, tokens?.access],
+    [refresh, tokens?.access],
   );
 
   const value = useMemo<AuthContextValue>(
