@@ -18,12 +18,15 @@ This checklist captures the prioritized backlog for bringing the Sankofa backend
     - `docker-compose.local.yml` orchestrates PostgreSQL, Redis, the Django ASGI app (serving HTTP + WebSockets), Celery worker/beat, and the two React client apps.
     - `docker-compose.coolify.yml` provides a production-ready subset tailored for Coolify deployment (ASGI app, workers, PostgreSQL, Redis, static asset serving instructions).
     - Coolify deployment relies on dynamic host port assignment so multiple projects can run without binding conflicts.
+    - Admin and web frontend runtime images serve their bundles via Nginx with SPA-aware routing so deep links load without 404s.
+    - `.env.production.example` enumerates real-world secrets/domains for Django, Celery, Redis, email, and object storage to simplify production configuration.
     - Shared `.env.example` files document required environment variables for each service.
     - Documentation includes commands to build and start each environment.
   - **Verification Steps:**
     - Local: `cp .env.local.example .env.local && docker compose -f docker-compose.local.yml up --build` (run the Flutter app separately with `flutter run` when needed)
     - Coolify: `cp .env.production.example .env.production && docker compose -f docker-compose.coolify.yml config`
     - Coolify: redeploy the stack and confirm the platform lists auto-assigned published ports for `backend`, `admin_web`, and `web_app` with no host port collisions.
+    - Coolify: hit deep links such as `/login` on both frontends and verify they render the SPA instead of showing Nginx 404 pages.
 
 - [x] **Story:** As a developer, I want CI scaffolding so tests run automatically, ensuring regressions are caught early.
   - **Acceptance Criteria:**
