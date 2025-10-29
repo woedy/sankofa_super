@@ -149,16 +149,40 @@ This checklist captures the prioritized backlog for bringing the Sankofa backend
 
 ## Phase 3 — Admin Console Integration
 
-- [ ] **Story:** As an admin, I need secure access to manage users, groups, and savings configurations.
+- [x] **Story:** As an admin, I need secure access to manage users, groups, and savings configurations.
   - **Acceptance Criteria:**
     - Admin React app authenticates against backend admin endpoints (role-based access).
     - CRUD endpoints for administrative tasks implemented with proper permission classes.
     - Audit logging captures admin actions.
+  - **Verification Steps:**
+    - `python sankofa_backend/manage.py migrate`
+    - `python sankofa_backend/manage.py test apps.admin_api`
+    - From `sankofa_admin`, run `npm install` (first time) then `npm run dev` and confirm:
+      - Login at `/login` using a staff account created in Django admin.
+      - Navigate to **Users** and approve/suspend a member; verify updates reflect immediately and audit log entries appear via `/api/admin/audit-logs/`.
+      - Open **Groups** to inspect membership and invites sourced from the live API.
+      - Review **Cashflow** queues populated with pending deposits/withdrawals.
 
-- [ ] **Story:** As an operations analyst, I need dashboards and reports within the admin app.
+- [x] **Story:** As an operations analyst, I need dashboards and reports within the admin app.
   - **Acceptance Criteria:**
     - Backend exposes analytics endpoints feeding the admin dashboard widgets.
     - Filters and exports match the UI’s capabilities.
+  - **Verification Steps:**
+    - With the admin console running, confirm the **Dashboard** and **Analytics** views render live metrics from `/api/admin/dashboard/`.
+    - Adjust data filters (transaction type/status) on **Transactions** and ensure the results change accordingly.
+
+- [x] **Story:** As a platform operations lead, I need to publish and manage public Susu groups from the admin console.
+  - **Acceptance Criteria:**
+    - Admin API supports full CRUD on groups plus invite creation, approval, decline, and member removal with audit logging.
+    - Group detail drawer in `sankofa_admin` surfaces members, pending invites, and an invite form that mirrors the `sankofa_app` join workflow.
+    - New groups default to public/approval-required with platform ownership and optional seeded invites.
+  - **Verification Steps:**
+    - Backend: `DJANGO_DB_ENGINE=sqlite python sankofa_backend/manage.py test apps.admin_api --verbosity 2`.
+    - Frontend: from `sankofa_admin`, run `npm install` (first time) then `npm run dev` and validate the flow:
+      1. Sign in as a staff user and open **Groups**.
+      2. Click **Create public group**, complete the form (including at least one invite), and submit; confirm the group appears in the table with the expected contribution settings.
+      3. Open the group drawer, approve a pending invite, decline another, and remove the approved member—membership and invite counts should update immediately and refresh after a browser reload.
+      4. Delete the group and verify it no longer appears in the list while the API returns `404` for the previous detail URL.
 
 ---
 
