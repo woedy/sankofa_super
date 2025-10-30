@@ -19,6 +19,6 @@ COPY sankofa_backend /app/sankofa_backend
 
 WORKDIR /app/sankofa_backend
 
-RUN python manage.py collectstatic --noinput
+RUN DJANGO_SETTINGS_MODULE=core.settings.production python manage.py collectstatic --noinput
 
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
