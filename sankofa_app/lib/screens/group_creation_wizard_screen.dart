@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:fluttercontactpicker/fluttercontactpicker.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:intl/intl.dart';
 import 'package:sankofasave/models/group_draft_model.dart';
 import 'package:sankofasave/models/susu_group_model.dart';
@@ -315,28 +315,34 @@ class _GroupCreationWizardScreenState
     if (_isPickingContact) return;
     setState(() => _isPickingContact = true);
     try {
-      final hasPermission = await FlutterContactPicker.hasPermission();
-      if (!hasPermission) {
-        final granted = await FlutterContactPicker.requestPermission();
-        if (granted != true) {
-          _showMessage('Enable contact access to import invites from your address book.');
-          return;
-        }
+      // Request permission
+      if (!await FlutterContacts.requestPermission()) {
+        _showMessage('Enable contact access to import invites from your address book.');
+        return;
       }
 
-      final contact = await FlutterContactPicker.pickPhoneContact();
+      // Pick a contact
+      final contact = await FlutterContacts.openExternalPick();
       if (contact == null) {
         return;
       }
 
-      final phoneNumber = contact.phoneNumber?.number?.trim() ?? '';
+      // Get the full contact with phones
+      final fullContact = await FlutterContacts.getContact(contact.id);
+      if (fullContact == null || fullContact.phones.isEmpty) {
+        _showMessage('The selected contact does not have a phone number.');
+        return;
+      }
+
+      // Get the first phone number
+      final phoneNumber = fullContact.phones.first.number.trim();
       if (phoneNumber.isEmpty) {
         _showMessage('The selected contact does not have a phone number.');
         return;
       }
 
       final normalizedPhone = _authService.normalizePhone(phoneNumber);
-      final name = (contact.fullName ?? '').trim();
+      final name = fullContact.displayName.trim();
 
       _addInvite(
         GroupInviteDraft(

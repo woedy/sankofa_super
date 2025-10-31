@@ -89,22 +89,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.19.1"
-  contact_picker_platform_interface:
-    dependency: transitive
-    description:
-      name: contact_picker_platform_interface
-      sha256: "40847ffa0f6e6755c0047e8ef35c4b622a2b053f41ef175d22c19f03984a9ed1"
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.7.0"
-  contact_picker_web:
-    dependency: transitive
-    description:
-      name: contact_picker_web
-      sha256: "13e739a6ce8f3286e441028dec5967b90fd2d5ceaec53045ae054b030877fe31"
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.7.0"
   convert:
     dependency: transitive
     description:
@@ -198,6 +182,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  flutter_contacts:
+    dependency: "direct main"
+    description:
+      name: flutter_contacts
+      sha256: "388d32cd33f16640ee169570128c933b45f3259bddbfae7a100bb49e5ffea9ae"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.9+2"
   flutter_launcher_icons:
     dependency: "direct dev"
     description:
@@ -240,14 +232,6 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  fluttercontactpicker:
-    dependency: "direct main"
-    description:
-      name: fluttercontactpicker
-      sha256: cddd2ba4631f97927adb59c53a529ee8f965e8685eded66a6d5988347aef6ec4
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.7.0"
   google_fonts:
     dependency: "direct main"
     description:
@@ -352,14 +336,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.20.2"
-  js:
-    dependency: transitive
-    description:
-      name: js
-      sha256: f2c445dce49627136094980615a031419f7f3eb393237e4ecd97ac15dea343f3
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.6.7"
   json_annotation:
     dependency: transitive
     description:
