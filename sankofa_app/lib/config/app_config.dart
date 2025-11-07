@@ -7,7 +7,7 @@ class AppConfig {
   static const String _baseOverrideKey = 'API_BASE_URL';
 
   static const String _stagingBaseUrl = 'https://staging.api.sankofa.local';
-  static const String _productionBaseUrl = 'https://api.sankofa.africa';
+  static const String _productionBaseUrl = 'https://sankofa-api.mawuvision.com';
 
   static String get environment => const String.fromEnvironment(_envKey, defaultValue: 'local');
 
