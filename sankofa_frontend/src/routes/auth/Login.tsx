@@ -2,24 +2,70 @@ import { FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import ThemeToggle from '../../components/ThemeToggle';
 import PrimaryButton from '../../components/PrimaryButton';
+import { authService } from '../../services/authService';
+import { useAuth } from '../../contexts/AuthContext';
+import { ApiException } from '../../lib/apiException';
 
 const Login = () => {
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [stage, setStage] = useState<'phone' | 'otp'>('phone');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { login } = useAuth();
 
-  const submitPhone = (event: FormEvent) => {
+  const submitPhone = async (event: FormEvent) => {
     event.preventDefault();
-    if (phone.trim().length >= 10) {
+    if (phone.trim().length < 10) {
+      setError('Please enter a valid phone number');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      await authService.requestOtp(phone, 'login');
       setStage('otp');
+    } catch (err) {
+      if (err instanceof ApiException) {
+        setError(err.message);
+      } else {
+        setError('Failed to send OTP. Please try again.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
-  const submitOtp = (event: FormEvent) => {
+  const submitOtp = async (event: FormEvent) => {
     event.preventDefault();
-    if (otp.length === 6) {
-      navigate('/auth/kyc');
+    if (otp.length !== 6) {
+      setError('Please enter a 6-digit OTP');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      await login(phone, otp);
+      // Check if user needs KYC
+      const user = await authService.getStoredUser();
+      if (user && user.kycStatus === 'pending') {
+        navigate('/auth/kyc');
+      } else {
+        navigate('/app/home');
+      }
+    } catch (err) {
+      if (err instanceof ApiException) {
+        setError(err.message);
+      } else {
+        setError('Failed to verify OTP. Please try again.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -45,6 +91,11 @@ const Login = () => {
 
               {stage === 'phone' ? (
                 <form onSubmit={submitPhone} className="space-y-4">
+                  {error && (
+                    <div className="rounded-2xl bg-red-50 p-4 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
+                      {error}
+                    </div>
+                  )}
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
                     Mobile number
                     <input
@@ -52,13 +103,19 @@ const Login = () => {
                       value={phone}
                       onChange={(event) => setPhone(event.target.value)}
                       placeholder="e.g. 024 123 4567"
-                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 shadow-inner focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 dark:border-slate-700 dark:bg-slate-900"
+                      disabled={loading}
+                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 shadow-inner focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900"
                     />
                   </label>
-                  <PrimaryButton label="Send OTP" type="submit" />
+                  <PrimaryButton label={loading ? 'Sending...' : 'Send OTP'} type="submit" />
                 </form>
               ) : (
                 <form onSubmit={submitOtp} className="space-y-4">
+                  {error && (
+                    <div className="rounded-2xl bg-red-50 p-4 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
+                      {error}
+                    </div>
+                  )}
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
                     Verification code
                     <input
@@ -66,11 +123,17 @@ const Login = () => {
                       value={otp}
                       onChange={(event) => setOtp(event.target.value.slice(0, 6))}
                       placeholder="••••••"
-                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 dark:border-slate-700 dark:bg-slate-900"
+                      disabled={loading}
+                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900"
                     />
                   </label>
-                  <PrimaryButton label="Verify & continue" type="submit" />
-                  <button type="button" className="text-sm font-semibold text-primary hover:underline" onClick={() => setStage('phone')}>
+                  <PrimaryButton label={loading ? 'Verifying...' : 'Verify & continue'} type="submit" />
+                  <button 
+                    type="button" 
+                    className="text-sm font-semibold text-primary hover:underline disabled:opacity-50" 
+                    onClick={() => { setStage('phone'); setError(null); }}
+                    disabled={loading}
+                  >
                     Back to phone number
                   </button>
                 </form>

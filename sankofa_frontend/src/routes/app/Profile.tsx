@@ -1,13 +1,26 @@
-import { memberProfile } from '../../assets/data/mockData';
+import { useNavigate } from 'react-router-dom';
 import ThemeToggle from '../../components/ThemeToggle';
-import { ShieldCheckIcon, SmartphoneIcon } from 'lucide-react';
+import { ShieldCheckIcon, SmartphoneIcon, LogOutIcon } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 const Profile = () => {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/auth/login');
+  };
+
   const preferences = [
-    { label: 'Language', value: memberProfile.preferences.language },
-    { label: 'Biometrics', value: memberProfile.preferences.biometrics ? 'Enabled' : 'Disabled' },
-    { label: 'Marketing updates', value: memberProfile.preferences.marketing ? 'Subscribed' : 'Muted' }
+    { label: 'Language', value: 'English' },
+    { label: 'Biometrics', value: 'Not configured' },
+    { label: 'Marketing updates', value: 'Muted' }
   ];
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <div className="space-y-6">
@@ -22,31 +35,34 @@ const Profile = () => {
       <section className="grid gap-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-lg dark:border-slate-800 dark:bg-slate-900 md:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-4">
           <div className="flex items-center gap-4">
-            <img src={memberProfile.avatar} alt={memberProfile.name} className="h-16 w-16 rounded-full object-cover shadow-lg" />
+            <div className="h-16 w-16 rounded-full bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center text-2xl font-bold text-white shadow-lg">
+              {user.fullName.charAt(0).toUpperCase()}
+            </div>
             <div>
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">{memberProfile.name}</h2>
-              <p className="text-sm text-slate-600 dark:text-slate-300">{memberProfile.phone}</p>
-              <span className="mt-2 inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600">
-                <ShieldCheckIcon size={14} /> {memberProfile.kycStatus}
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">{user.fullName}</h2>
+              <p className="text-sm text-slate-600 dark:text-slate-300">{user.phoneNumber}</p>
+              {user.email && <p className="text-xs text-slate-500 dark:text-slate-400">{user.email}</p>}
+              <span className="mt-2 inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600 capitalize">
+                <ShieldCheckIcon size={14} /> {user.kycStatus}
               </span>
             </div>
           </div>
           <div className="grid gap-4 text-sm text-slate-600 dark:text-slate-300 md:grid-cols-2">
             <div className="rounded-2xl bg-slate-50/80 p-4 dark:bg-slate-900/60">
-              <p className="font-semibold text-slate-900 dark:text-white">Tier</p>
-              <p>{memberProfile.tier}</p>
+              <p className="font-semibold text-slate-900 dark:text-white">Member since</p>
+              <p>{new Date(user.createdAt).toLocaleDateString()}</p>
             </div>
             <div className="rounded-2xl bg-slate-50/80 p-4 dark:bg-slate-900/60">
               <p className="font-semibold text-slate-900 dark:text-white">Wallet balance</p>
-              <p>GH₵{memberProfile.walletBalance.toLocaleString()}</p>
+              <p>GH₵{user.walletBalance.toLocaleString()}</p>
             </div>
             <div className="rounded-2xl bg-slate-50/80 p-4 dark:bg-slate-900/60">
-              <p className="font-semibold text-slate-900 dark:text-white">Savings total</p>
-              <p>GH₵{memberProfile.savingsTotal.toLocaleString()}</p>
+              <p className="font-semibold text-slate-900 dark:text-white">Last updated</p>
+              <p>{new Date(user.walletUpdatedAt).toLocaleDateString()}</p>
             </div>
             <div className="rounded-2xl bg-slate-50/80 p-4 dark:bg-slate-900/60">
-              <p className="font-semibold text-slate-900 dark:text-white">Notifications</p>
-              <p>{memberProfile.notificationCount} unread alerts</p>
+              <p className="font-semibold text-slate-900 dark:text-white">Account status</p>
+              <p className="capitalize">{user.kycStatus}</p>
             </div>
           </div>
         </div>
@@ -84,6 +100,20 @@ const Profile = () => {
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="rounded-3xl border border-red-200 bg-red-50 p-6 dark:border-red-900/30 dark:bg-red-900/10">
+        <h3 className="text-lg font-semibold text-red-900 dark:text-red-400">Danger zone</h3>
+        <p className="mt-2 text-sm text-red-700 dark:text-red-300">
+          Sign out of your account. You'll need to verify your phone number again to sign back in.
+        </p>
+        <button
+          onClick={handleLogout}
+          className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-red-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-red-700"
+        >
+          <LogOutIcon size={16} />
+          Sign out
+        </button>
       </section>
     </div>
   );

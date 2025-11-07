@@ -1,25 +1,33 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
-import { transactions } from '../../assets/data/mockData';
 import { BadgeCheckIcon, ClockIcon, ArrowDownIcon, ArrowUpIcon } from 'lucide-react';
-
-interface Transaction {
-  id: string;
-  type: string;
-  amount: number;
-  status: string;
-  date: string;
-  channel: string;
-  reference: string;
-}
+import { transactionService } from '../../services/transactionService';
+import type { Transaction } from '../../lib/types';
 
 const Transactions = () => {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('All');
+
+  useEffect(() => {
+    loadTransactions();
+  }, []);
+
+  const loadTransactions = async () => {
+    try {
+      const data = await transactionService.getTransactions();
+      setTransactions(data);
+    } catch (error) {
+      console.error('Failed to load transactions:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const data = useMemo(() => {
     if (filter === 'All') return transactions;
-    return transactions.filter((transaction) => transaction.type === filter);
-  }, [filter]);
+    return transactions.filter((transaction) => transaction.type.toLowerCase() === filter.toLowerCase());
+  }, [filter, transactions]);
 
   const columns = useMemo<ColumnDef<Transaction>[]>(
     () => [
@@ -29,14 +37,14 @@ const Transactions = () => {
         cell: ({ getValue }) => <span className="font-semibold text-slate-900 dark:text-white">{getValue<string>()}</span>
       },
       {
-        accessorKey: 'date',
+        accessorKey: 'createdAt',
         header: 'Date',
-        cell: ({ getValue }) => <span className="text-sm text-slate-500 dark:text-slate-400">{getValue<string>()}</span>
+        cell: ({ getValue }) => <span className="text-sm text-slate-500 dark:text-slate-400">{new Date(getValue<string>()).toLocaleDateString()}</span>
       },
       {
         accessorKey: 'channel',
         header: 'Channel',
-        cell: ({ getValue }) => <span className="text-sm text-slate-500 dark:text-slate-400">{getValue<string>()}</span>
+        cell: ({ getValue }) => <span className="text-sm text-slate-500 dark:text-slate-400">{getValue<string>() || 'N/A'}</span>
       },
       {
         accessorKey: 'amount',
@@ -50,10 +58,10 @@ const Transactions = () => {
         header: 'Status',
         cell: ({ getValue }) => {
           const value = getValue<string>();
-          const Icon = value === 'Completed' ? BadgeCheckIcon : ClockIcon;
-          const styles = value === 'Completed' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600';
+          const Icon = value === 'completed' ? BadgeCheckIcon : ClockIcon;
+          const styles = value === 'completed' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600';
           return (
-            <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${styles}`}>
+            <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold capitalize ${styles}`}>
               <Icon size={14} /> {value}
             </span>
           );
@@ -62,7 +70,7 @@ const Transactions = () => {
       {
         accessorKey: 'reference',
         header: 'Reference',
-        cell: ({ getValue }) => <span className="text-sm text-slate-500 dark:text-slate-400">{getValue<string>()}</span>
+        cell: ({ getValue }) => <span className="text-sm text-slate-500 dark:text-slate-400">{getValue<string>() || '-'}</span>
       }
     ],
     []
@@ -71,6 +79,17 @@ const Transactions = () => {
   const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() });
 
   const filters = ['All', 'Deposit', 'Contribution', 'Withdrawal'];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-center">
+          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+          <p className="text-sm text-slate-600 dark:text-slate-400">Loading transactions...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

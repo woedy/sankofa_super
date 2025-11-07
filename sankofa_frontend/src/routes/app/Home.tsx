@@ -1,20 +1,65 @@
 import { Link } from 'react-router-dom';
-import {
-  memberProfile,
-  groups,
-  savingsGoals,
-  transactions,
-  notifications,
-  processFlows
-} from '../../assets/data/mockData';
+import { useEffect, useState } from 'react';
 import { ArrowRightIcon, GiftIcon, PhoneCallIcon, PlusCircleIcon, ShieldCheckIcon } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
+import { groupService } from '../../services/groupService';
+import { savingsService } from '../../services/savingsService';
+import { transactionService } from '../../services/transactionService';
+import { notificationService } from '../../services/notificationService';
+import WalletModal from '../../components/WalletModal';
+import type { SusuGroup, SavingsGoal, Transaction, Notification } from '../../lib/types';
+import { processFlows } from '../../assets/data/mockData';
 
 const Home = () => {
+  const { user } = useAuth();
+  const [groups, setGroups] = useState<SusuGroup[]>([]);
+  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [walletModal, setWalletModal] = useState<'deposit' | 'withdrawal' | null>(null);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const [groupsData, goalsData, transactionsData, notificationsData] = await Promise.all([
+        groupService.getGroups(),
+        savingsService.getSavingsGoals(),
+        transactionService.getTransactions(),
+        notificationService.getNotifications(),
+      ]);
+      setGroups(groupsData.slice(0, 2)); // Show top 2
+      setSavingsGoals(goalsData);
+      setTransactions(transactionsData.slice(0, 3)); // Show top 3
+      setNotifications(notificationsData.slice(0, 3)); // Show top 3
+    } catch (error) {
+      console.error('Failed to load data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const quickActions = [
-    { label: 'Deposit funds', icon: PlusCircleIcon, to: '/app/transactions', description: 'Top up wallet' },
-    { label: 'Request payout', icon: GiftIcon, to: '/app/transactions', description: 'Schedule withdrawal' },
+    { label: 'Deposit funds', icon: PlusCircleIcon, onClick: () => setWalletModal('deposit'), description: 'Top up wallet' },
+    { label: 'Request payout', icon: GiftIcon, onClick: () => setWalletModal('withdrawal'), description: 'Schedule withdrawal' },
     { label: 'Contact support', icon: PhoneCallIcon, to: '/app/support', description: 'Chat with an agent' }
   ];
+
+  const savingsTotal = savingsGoals.reduce((sum, goal) => sum + goal.savedAmount, 0);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-center">
+          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+          <p className="text-sm text-slate-600 dark:text-slate-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -23,10 +68,10 @@ const Home = () => {
           <div className="flex flex-wrap items-center gap-4">
             <div>
               <p className="text-sm font-semibold uppercase tracking-widest text-primary">Wallet snapshot</p>
-              <h2 className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">GH₵{memberProfile.walletBalance.toLocaleString()}</h2>
+              <h2 className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">GH₵{user?.walletBalance.toLocaleString() || '0'}</h2>
             </div>
             <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-sm font-medium text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300">
-              {memberProfile.kycStatus}
+              {user?.kycStatus === 'verified' ? 'Verified' : user?.kycStatus || 'Pending'}
             </span>
           </div>
           <p className="text-sm text-slate-600 dark:text-slate-300">
@@ -34,23 +79,37 @@ const Home = () => {
           </p>
           <div className="flex flex-wrap gap-3">
             {quickActions.map((action) => (
-              <Link
-                key={action.label}
-                to={action.to}
-                className="group inline-flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-primary hover:text-primary dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200"
-              >
-                <action.icon className="h-5 w-5 text-primary transition group-hover:scale-110" />
-                <div className="text-left">
-                  <p>{action.label}</p>
-                  <p className="text-xs font-normal text-slate-500 dark:text-slate-400">{action.description}</p>
-                </div>
-              </Link>
+              action.to ? (
+                <Link
+                  key={action.label}
+                  to={action.to}
+                  className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:-translate-y-0.5 hover:border-primary hover:shadow-lg dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                >
+                  <action.icon size={20} className="text-primary" />
+                  <div className="text-left">
+                    <p>{action.label}</p>
+                    <p className="text-xs font-normal text-slate-500 dark:text-slate-400">{action.description}</p>
+                  </div>
+                </Link>
+              ) : (
+                <button
+                  key={action.label}
+                  onClick={action.onClick}
+                  className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:-translate-y-0.5 hover:border-primary hover:shadow-lg dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                >
+                  <action.icon size={20} className="text-primary" />
+                  <div className="text-left">
+                    <p>{action.label}</p>
+                    <p className="text-xs font-normal text-slate-500 dark:text-slate-400">{action.description}</p>
+                  </div>
+                </button>
+              )
             ))}
           </div>
         </div>
         <div className="rounded-3xl bg-gradient-to-br from-primary via-primary-dark to-slate-900 p-8 text-primary-foreground shadow-2xl">
           <p className="text-sm uppercase tracking-widest text-primary-foreground/70">Savings milestones</p>
-          <h3 className="mt-3 text-2xl font-bold">GH₵{memberProfile.savingsTotal.toLocaleString()} saved so far</h3>
+          <h3 className="mt-3 text-2xl font-bold">GH₵{savingsTotal.toLocaleString()} saved so far</h3>
           <p className="mt-3 text-sm text-primary-foreground/80">
             Boost your goals faster with auto-contributions and community accountability from your susu groups.
           </p>
@@ -96,9 +155,9 @@ const Home = () => {
                 </div>
                 <div className="flex-1">
                   <p className="font-semibold text-slate-900 dark:text-white">{group.name}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">{group.members} members • GH₵{group.contribution} weekly</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{group.totalMembers} members • GH₵{group.contributionAmount} {group.contributionFrequency}</p>
                   <p className="mt-1 text-xs text-primary">
-                    Next payout: {group.nextPayout} ({group.cycleStatus})
+                    {group.nextPayoutDate ? `Next payout: ${new Date(group.nextPayoutDate).toLocaleDateString()}` : 'No payout scheduled'} ({group.cycleStatus})
                   </p>
                 </div>
               </Link>
@@ -116,8 +175,8 @@ const Home = () => {
             {transactions.map((transaction) => (
               <div key={transaction.id} className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-700 dark:bg-slate-900/70">
                 <div>
-                  <p className="text-sm font-semibold text-slate-900 dark:text-white">{transaction.type}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">{transaction.date} • {transaction.channel}</p>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white capitalize">{transaction.type}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{new Date(transaction.createdAt).toLocaleDateString()} • {transaction.channel || 'N/A'}</p>
                 </div>
                 <div className="text-right">
                   <p className="font-semibold text-slate-900 dark:text-white">GH₵{transaction.amount.toLocaleString()}</p>
@@ -159,7 +218,7 @@ const Home = () => {
             {notifications.map((notification) => (
               <div key={notification.id} className="rounded-2xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-700 dark:bg-slate-900/70">
                 <p className="text-sm font-semibold text-slate-900 dark:text-white">{notification.title}</p>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{notification.time}</p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{new Date(notification.createdAt).toLocaleDateString()}</p>
                 <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{notification.body}</p>
               </div>
             ))}
@@ -184,6 +243,17 @@ const Home = () => {
           <ArrowRightIcon size={16} />
         </Link>
       </section>
+
+      {walletModal && (
+        <WalletModal
+          type={walletModal}
+          onClose={() => setWalletModal(null)}
+          onSuccess={() => {
+            setWalletModal(null);
+            loadData(); // Reload data to show updated transactions
+          }}
+        />
+      )}
     </div>
   );
 };
