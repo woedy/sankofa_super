@@ -193,6 +193,12 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": False,
 }
 
+AUTH_TEST_PHONE_OTPS = {
+    "login": {
+        "+233241234567": "112233",
+    }
+}
+
 DEFAULT_KYC_STATUS = os.environ.get("DEFAULT_KYC_STATUS", "pending")
 
 IDENTIFICATION_STORAGE_BACKEND = os.environ.get("IDENTIFICATION_STORAGE_BACKEND", "local")

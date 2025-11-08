@@ -175,3 +175,43 @@ class AuthenticationFlowTests(TestCase):
         message = mail.outbox[0]
         self.assertIn("login", message.subject.lower())
         self.assertIn("Kwame", message.body)
+
+    @override_settings(
+        AUTH_TEST_PHONE_OTPS={
+            PhoneOTP.PURPOSE_LOGIN: {
+                "+233241234567": "112233",
+            }
+        }
+    )
+    def test_login_otp_uses_configured_test_code(self):
+        user = User.objects.create_user(
+            phone_number="0241234567",
+            full_name="Test User",
+            email="test-user@example.com",
+        )
+
+        request_response = self._request(
+            reverse("accounts:otp-request"),
+            {"phone_number": user.phone_number, "purpose": PhoneOTP.PURPOSE_LOGIN},
+        )
+
+        self.assertEqual(request_response.status_code, 200)
+
+        otp = PhoneOTP.objects.filter(
+            phone_number=user.phone_number,
+            purpose=PhoneOTP.PURPOSE_LOGIN,
+        ).first()
+
+        self.assertIsNotNone(otp)
+        self.assertEqual(otp.code, "112233")
+
+        verify_response = self._request(
+            reverse("accounts:otp-verify"),
+            {
+                "phone_number": user.phone_number,
+                "purpose": PhoneOTP.PURPOSE_LOGIN,
+                "code": "112233",
+            },
+        )
+
+        self.assertEqual(verify_response.status_code, 200)

@@ -1,0 +1,1 @@
+flutter run --device-id BLDYD22B03002351 --dart-define=SANKOFA_ENV=production

@@ -84,7 +84,18 @@ def issue_phone_otp(
     full_name: str | None = None,
 ) -> PhoneOTP:
     ttl_minutes = int(getattr(settings, "AUTH_OTP_TTL_MINUTES", 5))
-    generated_code = code or generate_otp_code()
+    test_code = None
+    test_config = getattr(settings, "AUTH_TEST_PHONE_OTPS", None)
+
+    if code is not None:
+        generated_code = code
+    else:
+        if isinstance(test_config, dict):
+            purpose_config = test_config.get(purpose) or {}
+            if isinstance(purpose_config, dict):
+                test_code = purpose_config.get(phone_number)
+
+        generated_code = test_code or generate_otp_code()
     otp = PhoneOTP.create_for_phone(
         phone_number=phone_number,
         purpose=purpose,

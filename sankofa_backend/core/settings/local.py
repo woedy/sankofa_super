@@ -7,3 +7,6 @@ ALLOWED_HOSTS = ["*"]
 
 DATABASES["default"].setdefault("HOST", "localhost")
 DATABASES["default"].setdefault("PORT", 5432)
+
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+SERVER_EMAIL = DEFAULT_FROM_EMAIL = "no-reply@sankofa.test"
