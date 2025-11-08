@@ -1,6 +1,6 @@
 {
-    "name": "dreamflow_counter",
-    "short_name": "dreamflow_counter",
+    "name": "SankofaSave",
+    "short_name": "SankofaSave",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
